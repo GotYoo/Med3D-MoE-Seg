@@ -1,0 +1,30 @@
+{
+  "scan_id": "LIDC-IDRI-0769",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0769_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0769_mask.nii.gz",
+  "text_report": "CT scan with 1 annotated nodule cluster(s). Primary finding: an indeterminate nodule with ground-glass opacity appearance and spiculated margin. Overall impression: indeterminate. (Primary nodule mask volume: 83 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 83,
+      "bbox": {
+        "x": [
+          285,
+          298
+        ],
+        "y": [
+          375,
+          387
+        ],
+        "z": [
+          179,
+          183
+        ]
+      },
+      "malignancy_avg": 3.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 1.0,
+      "sphericity_avg": 3.0
+    }
+  ]
+}

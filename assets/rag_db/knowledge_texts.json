@@ -1,0 +1,164 @@
+[
+  {
+    "id": "k4",
+    "text": "Pulmonary nodules are small round or oval-shaped growths in the lungs, typically less than 3 cm in diameter. They are often detected incidentally on chest CT scans.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k5",
+    "text": "Ground-glass opacity (GGO) refers to hazy increased lung attenuation with preservation of bronchial and vascular margins, which may represent early-stage adenocarcinoma.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k6",
+    "text": "Solid pulmonary nodules appear as homogeneous soft-tissue attenuation lesions. Spiculated margins suggest malignancy and require further evaluation.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k7",
+    "text": "Subsolid nodules include both pure ground-glass and part-solid nodules. Part-solid nodules have higher malignancy risk than pure GGOs.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k10",
+    "text": "The Fleischner Society provides guidelines for management of incidentally detected pulmonary nodules based on size and patient risk factors.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k11",
+    "text": "Calcification patterns in pulmonary nodules can help determine benignity: central, diffuse, laminated, or popcorn calcifications typically indicate benign lesions.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k12",
+    "text": "Enhancement patterns on contrast-enhanced CT can help differentiate malignant from benign nodules. Malignant nodules typically show greater enhancement.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k15",
+    "text": "Lung cancer staging follows the TNM classification system: T describes tumor size and extent, N describes lymph node involvement, M describes distant metastases.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k16",
+    "text": "Stage I lung cancer is confined to the lung without lymph node involvement. Stage IA tumors are ≤3 cm, Stage IB are >3 cm but ≤4 cm.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k17",
+    "text": "Stage II lung cancer involves larger tumors or limited lymph node spread. Stage IIA includes tumors >4 cm but ≤5 cm with no lymph node involvement.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k20",
+    "text": "Emphysema is characterized by permanent enlargement of airspaces distal to terminal bronchioles, with destruction of alveolar walls.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k21",
+    "text": "Pulmonary fibrosis shows reticular opacities, traction bronchiectasis, and honeycombing on HRCT, typically with a basal and peripheral predominant distribution.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k22",
+    "text": "Pneumonia appears as airspace consolidation with air bronchograms on chest radiographs and CT. Lobar distribution suggests bacterial etiology.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k25",
+    "text": "The right lung has three lobes (upper, middle, lower) while the left lung has two lobes (upper, lower) with a lingula.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k26",
+    "text": "The carina is the bifurcation point of the trachea into the right and left main bronchi, located at the level of the T4-T5 vertebrae.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k27",
+    "text": "Mediastinal compartments include anterior (thymus, lymph nodes), middle (heart, great vessels), and posterior (esophagus, descending aorta) divisions.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k30",
+    "text": "Lung nodule measurement should follow RECIST criteria: maximum diameter in axial plane on lung window settings.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k31",
+    "text": "Volumetric analysis provides more accurate nodule growth assessment compared to linear measurements, especially for small nodules.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k34",
+    "text": "Smoking history is the strongest risk factor for lung cancer. Pack-years calculation: (packs per day) × (years smoked).",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k35",
+    "text": "Occupational exposures including asbestos, radon, and chromium increase lung cancer risk. Asbestos exposure can cause both lung cancer and mesothelioma.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k38",
+    "text": "Lung-RADS categories provide standardized reporting and management recommendations for lung cancer screening CT exams.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k39",
+    "text": "Solid nodules <6 mm typically require no routine follow-up in low-risk patients. Nodules 6-8 mm may require 6-12 month follow-up.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k40",
+    "text": "Ground-glass nodules ≥6 mm typically require follow-up at 3-6 months to assess for persistence, then annual surveillance.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k43",
+    "text": "Solitary pulmonary nodule differential includes: primary lung cancer, metastasis, granuloma, hamartoma, arteriovenous malformation, and infectious causes.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k44",
+    "text": "Multiple pulmonary nodules suggest metastatic disease, granulomatous infection, vasculitis, or miliary tuberculosis depending on distribution pattern.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k47",
+    "text": "Stereotactic body radiation therapy (SBRT) is an option for early-stage lung cancer in patients who are not surgical candidates.",
+    "source": "text_file",
+    "category": "general"
+  },
+  {
+    "id": "k48",
+    "text": "Wedge resection, segmentectomy, and lobectomy are surgical options for early-stage lung cancer, with lobectomy being the standard of care for stage I disease.",
+    "source": "text_file",
+    "category": "general"
+  }
+]

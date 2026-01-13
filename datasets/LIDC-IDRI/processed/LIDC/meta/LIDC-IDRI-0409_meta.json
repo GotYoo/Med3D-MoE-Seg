@@ -1,0 +1,140 @@
+{
+  "scan_id": "LIDC-IDRI-0409",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0409_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0409_mask.nii.gz",
+  "text_report": "CT scan with 6 annotated nodule cluster(s). Primary finding: an indeterminate nodule with solid appearance and spiculated margin. Overall impression: indeterminate. (Primary nodule mask volume: 986 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 384,
+      "bbox": {
+        "x": [
+          367,
+          381
+        ],
+        "y": [
+          176,
+          192
+        ],
+        "z": [
+          39,
+          50
+        ]
+      },
+      "malignancy_avg": 1.6666666666666667,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.666666666666667
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 986,
+      "bbox": {
+        "x": [
+          319,
+          341
+        ],
+        "y": [
+          300,
+          316
+        ],
+        "z": [
+          47,
+          62
+        ]
+      },
+      "malignancy_avg": 3.25,
+      "spiculation_avg": 1.25,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.0
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 88,
+      "bbox": {
+        "x": [
+          165,
+          178
+        ],
+        "y": [
+          462,
+          473
+        ],
+        "z": [
+          83,
+          91
+        ]
+      },
+      "malignancy_avg": 3.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.0
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 335,
+      "bbox": {
+        "x": [
+          335,
+          355
+        ],
+        "y": [
+          81,
+          98
+        ],
+        "z": [
+          133,
+          138
+        ]
+      },
+      "malignancy_avg": 2.5,
+      "spiculation_avg": 1.5,
+      "texture_avg": 4.5,
+      "sphericity_avg": 4.0
+    },
+    {
+      "cluster_id": 4,
+      "voxels": 40,
+      "bbox": {
+        "x": [
+          100,
+          107
+        ],
+        "y": [
+          331,
+          341
+        ],
+        "z": [
+          175,
+          181
+        ]
+      },
+      "malignancy_avg": 3.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 5.0
+    },
+    {
+      "cluster_id": 5,
+      "voxels": 58,
+      "bbox": {
+        "x": [
+          207,
+          216
+        ],
+        "y": [
+          169,
+          178
+        ],
+        "z": [
+          233,
+          240
+        ]
+      },
+      "malignancy_avg": 3.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 5.0
+    }
+  ]
+}

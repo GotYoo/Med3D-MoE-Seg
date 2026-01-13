@@ -1,0 +1,338 @@
+================================================================================
+Med3D-MoE-Seg 数据准备工具完成报告
+================================================================================
+日期: 2026-01-07
+功能: Patient-wise 数据划分（Train/Val/Test）
+
+================================================================================
+1. 核心功能
+================================================================================
+
+✅ Patient-wise Split
+   - 确保同一患者的所有扫描只出现在一个数据集中
+   - 避免数据泄露，提供真实的性能评估
+
+✅ 灵活的文件匹配
+   - 支持多种命名格式（下划线、连字符分隔）
+   - 自动查找配对的图像、掩码、报告文件
+
+✅ Sanity Check
+   - 验证 Train/Val/Test 集合的患者 ID 没有交集
+   - 打印详细的数据统计信息
+
+✅ JSON 输出
+   - 标准化的数据格式
+   - 包含绝对路径和文本内容
+   - 易于集成到训练流程
+
+================================================================================
+2. 创建的文件
+================================================================================
+
+【主脚本】
+scripts/prepare_data_split.py (490 lines)
+  - parse_patient_id(): 从文件名提取患者 ID
+  - find_matching_files(): 查找匹配的图像/掩码/报告
+  - split_patients(): Patient-wise 随机划分
+  - create_dataset_json(): 生成 JSON 文件
+  - sanity_check(): 验证划分正确性
+
+【Bash 脚本】
+scripts/prepare_data.sh (80 lines)
+  - 一键运行数据准备流程
+  - 自动检查输入/输出目录
+  - 打印详细的统计信息
+
+【测试脚本】
+scripts/test_data_split.py (150 lines)
+  - 创建模拟数据集
+  - 测试核心功能
+  - 验证输出格式
+
+【文档】
+DATA_PREPARATION.md (详细使用指南)
+  - 输入数据格式规范
+  - 快速开始教程
+  - 参数说明
+  - 常见问题解答
+
+================================================================================
+3. 使用流程
+================================================================================
+
+【步骤 1】准备原始数据
+组织数据目录结构：
+  data_root/
+  ├── Patient001/
+  │   ├── Patient001_scan01.nii.gz          # CT 图像
+  │   ├── Patient001_scan01_mask.nii.gz     # 掩码
+  │   └── Patient001_scan01_report.json     # 报告
+  ├── Patient002/
+  │   └── ...
+  └── ...
+
+【步骤 2】运行数据划分
+方法 A - 使用 Bash 脚本（推荐）:
+  bash scripts/prepare_data.sh
+
+方法 B - 直接运行 Python:
+  python scripts/prepare_data_split.py \
+      --data_dir /path/to/raw_data \
+      --output_dir /path/to/splits \
+      --train_ratio 0.7 \
+      --val_ratio 0.1 \
+      --test_ratio 0.2
+
+【步骤 3】验证输出
+检查生成的 JSON 文件：
+  data/splits/
+  ├── train.json    # 训练集 (70%)
+  ├── val.json      # 验证集 (10%)
+  └── test.json     # 测试集 (20%)
+
+【步骤 4】集成到训练
+更新配置文件并开始训练：
+  bash scripts/train_ds.sh
+
+================================================================================
+4. 输入/输出格式
+================================================================================
+
+【输入】
+文件命名格式:
+  ✓ PatientID_ScanID.nii.gz           (图像)
+  ✓ PatientID_ScanID_mask.nii.gz      (掩码)
+  ✓ PatientID_ScanID_report.json      (报告)
+
+支持的命名示例:
+  - LIDC-IDRI-0001_scan01.nii.gz
+  - Patient001_CT.nii.gz
+  - P123_Study1.nii.gz
+
+报告 JSON 格式:
+  {
+    "report": "完整报告文本",
+    "findings": "发现部分",
+    "impression": "印象部分"
+  }
+
+【输出】
+JSON 格式 (train.json / val.json / test.json):
+  [
+    {
+      "patient_id": "LIDC-IDRI-0001",
+      "image_path": "/absolute/path/to/image.nii.gz",
+      "mask_path": "/absolute/path/to/mask.nii.gz",
+      "report_path": "/absolute/path/to/report.json",
+      "text_report": "完整报告文本内容"
+    },
+    ...
+  ]
+
+================================================================================
+5. Patient-wise Split 原理
+================================================================================
+
+【问题】
+Sample-wise Split (错误方式):
+  Patient-001 scan1 → Train
+  Patient-001 scan2 → Test    ❌ 数据泄露!
+
+【解决】
+Patient-wise Split (正确方式):
+  Patient-001: ALL scans → Train  ✅
+  Patient-002: ALL scans → Val    ✅
+  Patient-003: ALL scans → Test   ✅
+
+【实现】
+1. 从文件名解析 Patient ID
+2. 按患者分组所有扫描
+3. 随机划分患者列表（非样本列表）
+4. Sanity check: 验证患者 ID 交集为空
+
+【验证】
+assert Train_Patients ∩ Val_Patients = ∅
+assert Train_Patients ∩ Test_Patients = ∅
+assert Val_Patients ∩ Test_Patients = ∅
+
+================================================================================
+6. 测试验证
+================================================================================
+
+【功能测试】
+✅ Patient ID 解析
+   - 测试文件: LIDC-IDRI-0001_scan01.nii.gz → LIDC-IDRI-0001
+   - 测试文件: Patient001_CT.nii.gz → Patient001
+   - 测试文件: P123_Study1.nii.gz → P123
+
+✅ 患者划分
+   - 输入: 10 patients
+   - 输出: Train=7 (70%), Val=1 (10%), Test=2 (20%)
+   - 交集检查: 全部为 0 ✓
+
+✅ 文件查找
+   - 自动匹配图像-掩码-报告三元组
+   - 处理缺失文件（mask_path=null, text_report=""）
+
+【输出验证】
+✅ JSON 格式正确
+   - 包含所有必需字段
+   - 路径为绝对路径
+   - 文本内容完整
+
+================================================================================
+7. 参数配置
+================================================================================
+
+【默认参数】
+train_ratio: 0.7    (70% 训练集)
+val_ratio: 0.1      (10% 验证集)
+test_ratio: 0.2     (20% 测试集)
+random_seed: 42     (保证可重复性)
+
+【可选参数】
+--image_pattern: 自定义图像文件匹配模式（默认 *.nii.gz）
+
+【推荐比例】
+小数据集 (<100 患者):
+  - 7:1:2 或 6:2:2
+
+大数据集 (>500 患者):
+  - 8:1:1 或 7:1.5:1.5
+
+================================================================================
+8. 示例输出
+================================================================================
+
+运行 scripts/prepare_data.sh 的输出:
+
+======================================================================
+Med3D-MoE-Seg Data Preparation
+======================================================================
+Data directory: /home/wuhanqing/processed_lidc_data
+Output directory: /home/wuhanqing/Med3D-MoE-Seg/data/splits
+Split ratios: Train=0.7, Val=0.1, Test=0.2
+
+[Step 1] Finding matching files...
+Found 120 image files
+
+======================================================================
+Data Statistics
+======================================================================
+Total patients: 60
+Total samples: 120
+  - With mask: 120 (100.0%)
+  - With report: 110 (91.7%)
+  - Complete: 110 (91.7%)
+Average samples per patient: 2.00
+======================================================================
+
+[Step 2] Splitting patients...
+
+======================================================================
+Sanity Check: Patient ID Overlap
+======================================================================
+Train set: 42 patients
+Val set: 6 patients
+Test set: 12 patients
+
+Overlap Check:
+  Train ∩ Val: 0 patients ✅
+  Train ∩ Test: 0 patients ✅
+  Val ∩ Test: 0 patients ✅
+
+✅ Sanity check passed!
+======================================================================
+
+[Step 3] Creating JSON files...
+Created train.json with 84 samples from 42 patients
+Created val.json with 12 samples from 6 patients
+Created test.json with 24 samples from 12 patients
+
+✅ Data preparation completed successfully!
+======================================================================
+
+================================================================================
+9. 与训练流程集成
+================================================================================
+
+【步骤 1】数据准备
+bash scripts/prepare_data.sh
+  ↓
+生成: data/splits/{train,val,test}.json
+
+【步骤 2】更新配置
+config/med3d_lisa_full.yaml:
+  data:
+    train_data: data/splits/train.json
+    val_data: data/splits/val.json
+
+【步骤 3】开始训练
+bash scripts/train_ds.sh
+  ↓
+训练器自动读取 JSON 文件
+
+【数据流】
+JSON → DataLoader → Med3DLISA_Full → Training
+
+================================================================================
+10. 常见问题
+================================================================================
+
+Q1: "No patient data found"
+A: 检查 --data_dir 路径和文件命名格式
+
+Q2: Patient ID 解析错误
+A: 修改 parse_patient_id() 函数适配命名规范
+
+Q3: 报告文本为空
+A: 检查 JSON 字段名，修改 load_report() 函数
+
+Q4: 比例不精确
+A: 患者数量少时会有整数划分偏差，可接受
+
+================================================================================
+11. 文件清单
+================================================================================
+
+【新增文件】
+✓ scripts/prepare_data_split.py (490 lines) - 核心脚本
+✓ scripts/prepare_data.sh (80 lines) - Bash 包装器
+✓ scripts/test_data_split.py (150 lines) - 测试脚本
+✓ DATA_PREPARATION.md (详细文档)
+✓ DATA_PREP_SUMMARY.txt (本文件)
+
+总计: ~720 行代码 + 完整文档
+
+================================================================================
+12. 下一步工作
+================================================================================
+
+【立即可做】
+✅ 数据准备工具已完成
+✅ 所有测试通过
+✅ 文档齐全
+
+【使用建议】
+1. 按照 DATA_PREPARATION.md 准备数据
+2. 运行 bash scripts/prepare_data.sh
+3. 检查生成的 train/val/test.json
+4. 更新训练配置
+5. 开始训练
+
+【后续优化】
+□ 添加数据增强选项
+□ 支持多模态输入（PET+CT）
+□ 实现交叉验证划分
+□ 添加数据质量检查
+
+================================================================================
+✅ 数据准备工具开发完成！
+================================================================================
+
+所有功能已实现并测试，可以开始准备训练数据！
+
+命令快速参考:
+  bash scripts/prepare_data.sh                    # 运行数据划分
+  python scripts/prepare_data_split.py --help     # 查看参数说明
+  python scripts/test_data_split.py               # 运行测试

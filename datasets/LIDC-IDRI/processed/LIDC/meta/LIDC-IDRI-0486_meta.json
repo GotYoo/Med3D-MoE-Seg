@@ -1,0 +1,52 @@
+{
+  "scan_id": "LIDC-IDRI-0486",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0486_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0486_mask.nii.gz",
+  "text_report": "CT scan with 2 annotated nodule cluster(s). Primary finding: an indeterminate nodule with solid appearance and spiculated margin. Overall impression: indeterminate. (Primary nodule mask volume: 296 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 274,
+      "bbox": {
+        "x": [
+          389,
+          411
+        ],
+        "y": [
+          142,
+          157
+        ],
+        "z": [
+          105,
+          113
+        ]
+      },
+      "malignancy_avg": 1.75,
+      "spiculation_avg": 1.5,
+      "texture_avg": 4.5,
+      "sphericity_avg": 2.75
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 296,
+      "bbox": {
+        "x": [
+          290,
+          309
+        ],
+        "y": [
+          133,
+          152
+        ],
+        "z": [
+          154,
+          163
+        ]
+      },
+      "malignancy_avg": 3.3333333333333335,
+      "spiculation_avg": 2.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.6666666666666665
+    }
+  ]
+}

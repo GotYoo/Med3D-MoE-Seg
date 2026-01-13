@@ -1,0 +1,96 @@
+{
+  "scan_id": "LIDC-IDRI-0400",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0400_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0400_mask.nii.gz",
+  "text_report": "CT scan with 4 annotated nodule cluster(s). Primary finding: an indeterminate nodule with solid appearance and spiculated margin. Overall impression: indeterminate. (Primary nodule mask volume: 100 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 47,
+      "bbox": {
+        "x": [
+          213,
+          227
+        ],
+        "y": [
+          51,
+          63
+        ],
+        "z": [
+          82,
+          87
+        ]
+      },
+      "malignancy_avg": 3.3333333333333335,
+      "spiculation_avg": 1.6666666666666667,
+      "texture_avg": 4.666666666666667,
+      "sphericity_avg": 3.6666666666666665
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 111,
+      "bbox": {
+        "x": [
+          232,
+          248
+        ],
+        "y": [
+          462,
+          475
+        ],
+        "z": [
+          87,
+          92
+        ]
+      },
+      "malignancy_avg": 3.3333333333333335,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.0
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 100,
+      "bbox": {
+        "x": [
+          151,
+          166
+        ],
+        "y": [
+          394,
+          406
+        ],
+        "z": [
+          106,
+          111
+        ]
+      },
+      "malignancy_avg": 3.5,
+      "spiculation_avg": 2.0,
+      "texture_avg": 4.75,
+      "sphericity_avg": 4.25
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 41,
+      "bbox": {
+        "x": [
+          158,
+          170
+        ],
+        "y": [
+          171,
+          184
+        ],
+        "z": [
+          128,
+          132
+        ]
+      },
+      "malignancy_avg": 2.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.0
+    }
+  ]
+}

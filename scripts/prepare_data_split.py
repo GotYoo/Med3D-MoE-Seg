@@ -1,0 +1,393 @@
+"""
+数据准备和划分脚本
+从lidc_dataset.json加载已处理的数据，按 Patient-wise 划分为 Train/Val/Test 集合
+
+使用方法:
+    python scripts/prepare_data_split.py \
+        --input_json /path/to/lidc_dataset.json \
+        --output_dir /path/to/output \
+        --train_ratio 0.7 \
+        --val_ratio 0.1 \
+        --test_ratio 0.2
+"""
+
+import os
+import json
+import argparse
+from pathlib import Path
+from collections import defaultdict
+import random
+from typing import Dict, List, Tuple
+
+
+def parse_patient_id(scan_id: str) -> str:
+    """
+    从scan_id中解析 Patient ID
+    
+    对于LIDC数据集，scan_id格式为: LIDC-IDRI-0001
+    
+    Args:
+        scan_id: 扫描ID
+    
+    Returns:
+        patient_id: 提取的 Patient ID
+    """
+    # 对于LIDC数据集，scan_id就是patient_id
+    return scan_id
+
+
+def load_lidc_dataset(json_path: Path, base_dir: Path = None) -> Dict[str, Dict[str, List]]:
+    """
+    从lidc_dataset.json加载数据集
+    
+    Args:
+        json_path: lidc_dataset.json文件路径
+        base_dir: 基础目录，用于构建绝对路径。如果为None，使用json_path的父目录
+    
+    Returns:
+        patient_data: {patient_id: {'samples': [sample1, sample2, ...]}}
+        其中每个sample包含：
+        - scan_id: 扫描ID
+        - image_path: 图像路径
+        - mask_path: 掩码路径
+        - text_report: 文本报告
+        - cluster_stats: 结节聚类统计信息
+    """
+    # 读取JSON文件
+    with open(json_path, 'r', encoding='utf-8') as f:
+        dataset = json.load(f)
+    
+    print(f"Loaded {len(dataset)} samples from {json_path}")
+    
+    # 如果没有指定base_dir，使用json_path的父目录
+    if base_dir is None:
+        base_dir = json_path.parent
+    
+    # 按patient ID组织数据
+    patient_data = defaultdict(lambda: {'samples': []})
+    
+    for item in dataset:
+        scan_id = item['scan_id']
+        patient_id = parse_patient_id(scan_id)
+        
+        # 构建绝对路径
+        image_path = item['image_path']
+        mask_path = item['mask_path']
+        
+        # 如果路径是相对路径，转换为绝对路径
+        if not os.path.isabs(image_path):
+            image_path = base_dir / image_path
+        else:
+            image_path = Path(image_path)
+            
+        if not os.path.isabs(mask_path):
+            mask_path = base_dir / mask_path
+        else:
+            mask_path = Path(mask_path)
+        
+        # 创建样本
+        sample = {
+            'scan_id': scan_id,
+            'patient_id': patient_id,
+            'image_path': image_path,
+            'mask_path': mask_path,
+            'text_report': item.get('text_report', ''),
+            'cluster_stats': item.get('cluster_stats', [])
+        }
+        
+        patient_data[patient_id]['samples'].append(sample)
+    
+    return patient_data
+
+
+def split_patients(
+    patient_ids: List[str],
+    train_ratio: float = 0.7,
+    val_ratio: float = 0.1,
+    test_ratio: float = 0.2,
+    random_seed: int = 42
+) -> Tuple[List[str], List[str], List[str]]:
+    """
+    按比例划分患者 ID
+    
+    Args:
+        patient_ids: 所有患者 ID 列表
+        train_ratio: 训练集比例
+        val_ratio: 验证集比例
+        test_ratio: 测试集比例
+        random_seed: 随机种子
+    
+    Returns:
+        (train_ids, val_ids, test_ids)
+    """
+    # 检查比例总和
+    assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, \
+        f"Ratios must sum to 1.0, got {train_ratio + val_ratio + test_ratio}"
+    
+    # 设置随机种子
+    random.seed(random_seed)
+    
+    # 打乱患者 ID
+    patient_ids = list(patient_ids)
+    random.shuffle(patient_ids)
+    
+    # 计算分割点
+    n_total = len(patient_ids)
+    n_train = int(n_total * train_ratio)
+    n_val = int(n_total * val_ratio)
+    
+    # 划分
+    train_ids = patient_ids[:n_train]
+    val_ids = patient_ids[n_train:n_train + n_val]
+    test_ids = patient_ids[n_train + n_val:]
+    
+    return train_ids, val_ids, test_ids
+
+
+def create_dataset_json(
+    patient_data: Dict,
+    patient_ids: List[str],
+    output_path: Path
+):
+    """
+    创建数据集 JSON 文件
+    
+    Args:
+        patient_data: 患者数据字典
+        patient_ids: 要包含的患者 ID 列表
+        output_path: 输出 JSON 文件路径
+    """
+    dataset = []
+    
+    for patient_id in patient_ids:
+        if patient_id not in patient_data:
+            print(f"Warning: Patient ID {patient_id} not found in data")
+            continue
+        
+        samples = patient_data[patient_id]['samples']
+        
+        for sample in samples:
+            # 创建数据项
+            data_item = {
+                'scan_id': sample['scan_id'],
+                'patient_id': patient_id,
+                'image_path': str(sample['image_path'].absolute()),
+                'mask_path': str(sample['mask_path'].absolute()),
+                'text_report': sample['text_report'],
+                'cluster_stats': sample['cluster_stats']
+            }
+            
+            dataset.append(data_item)
+    
+    # 保存 JSON
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(dataset, f, indent=2, ensure_ascii=False)
+    
+    print(f"Created {output_path} with {len(dataset)} samples from {len(patient_ids)} patients")
+
+
+def sanity_check(
+    train_ids: List[str],
+    val_ids: List[str],
+    test_ids: List[str]
+):
+    """
+    检查划分的有效性
+    
+    Args:
+        train_ids: 训练集患者 ID
+        val_ids: 验证集患者 ID
+        test_ids: 测试集患者 ID
+    """
+    print("\n" + "=" * 70)
+    print("Sanity Check: Patient ID Overlap")
+    print("=" * 70)
+    
+    train_set = set(train_ids)
+    val_set = set(val_ids)
+    test_set = set(test_ids)
+    
+    # 检查交集
+    train_val = train_set & val_set
+    train_test = train_set & test_set
+    val_test = val_set & test_set
+    
+    print(f"Train set: {len(train_set)} patients")
+    print(f"Val set: {len(val_set)} patients")
+    print(f"Test set: {len(test_set)} patients")
+    print(f"\nOverlap Check:")
+    print(f"  Train ∩ Val: {len(train_val)} patients")
+    print(f"  Train ∩ Test: {len(train_test)} patients")
+    print(f"  Val ∩ Test: {len(val_test)} patients")
+    
+    # 断言没有重叠
+    assert len(train_val) == 0, f"Train and Val sets overlap: {train_val}"
+    assert len(train_test) == 0, f"Train and Test sets overlap: {train_test}"
+    assert len(val_test) == 0, f"Val and Test sets overlap: {val_test}"
+    
+    print("\n✅ Sanity check passed! No patient ID overlaps between splits.")
+    print("=" * 70)
+
+
+def print_statistics(patient_data: Dict):
+    """
+    打印数据统计信息
+    
+    Args:
+        patient_data: 患者数据字典
+    """
+    print("\n" + "=" * 70)
+    print("Data Statistics")
+    print("=" * 70)
+    
+    n_patients = len(patient_data)
+    n_samples = sum(len(data['samples']) for data in patient_data.values())
+    
+    # 统计有掩码、报告和结节的样本数
+    n_with_mask = 0
+    n_with_report = 0
+    n_with_nodules = 0
+    n_complete = 0
+    total_clusters = 0
+    
+    for data in patient_data.values():
+        for sample in data['samples']:
+            if sample['mask_path'] and sample['mask_path'].exists():
+                n_with_mask += 1
+            if sample['text_report']:
+                n_with_report += 1
+            if len(sample['cluster_stats']) > 0:
+                n_with_nodules += 1
+                total_clusters += len(sample['cluster_stats'])
+            if sample['mask_path'] and sample['mask_path'].exists() and sample['text_report']:
+                n_complete += 1
+    
+    print(f"Total patients: {n_patients}")
+    print(f"Total samples: {n_samples}")
+    print(f"  - With mask: {n_with_mask} ({n_with_mask/n_samples*100:.1f}%)")
+    print(f"  - With report: {n_with_report} ({n_with_report/n_samples*100:.1f}%)")
+    print(f"  - With nodules: {n_with_nodules} ({n_with_nodules/n_samples*100:.1f}%)")
+    print(f"  - Complete (image+mask+report): {n_complete} ({n_complete/n_samples*100:.1f}%)")
+    print(f"Average samples per patient: {n_samples/n_patients:.2f}")
+    print(f"Total nodule clusters: {total_clusters}")
+    if n_with_nodules > 0:
+        print(f"Average clusters per sample with nodules: {total_clusters/n_with_nodules:.2f}")
+    print("=" * 70)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Prepare data split for Med3D-MoE-Seg from lidc_dataset.json")
+    parser.add_argument(
+        '--input_json',
+        type=str,
+        required=True,
+        help='Path to lidc_dataset.json file'
+    )
+    parser.add_argument(
+        '--output_dir',
+        type=str,
+        required=True,
+        help='Output directory for train/val/test JSON files'
+    )
+    parser.add_argument(
+        '--train_ratio',
+        type=float,
+        default=0.7,
+        help='Training set ratio (default: 0.7)'
+    )
+    parser.add_argument(
+        '--val_ratio',
+        type=float,
+        default=0.1,
+        help='Validation set ratio (default: 0.1)'
+    )
+    parser.add_argument(
+        '--test_ratio',
+        type=float,
+        default=0.2,
+        help='Test set ratio (default: 0.2)'
+    )
+    parser.add_argument(
+        '--random_seed',
+        type=int,
+        default=42,
+        help='Random seed for reproducibility (default: 42)'
+    )
+    parser.add_argument(
+        '--base_dir',
+        type=str,
+        default=None,
+        help='Base directory for resolving relative paths in JSON (default: parent dir of input_json)'
+    )
+    
+    args = parser.parse_args()
+    
+    # 创建 Path 对象
+    input_json = Path(args.input_json)
+    output_dir = Path(args.output_dir)
+    base_dir = Path(args.base_dir) if args.base_dir else None
+    
+    # 检查输入文件
+    if not input_json.exists():
+        raise ValueError(f"Input JSON file not found: {input_json}")
+    
+    # 创建输出目录
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    print("=" * 70)
+    print("Med3D-MoE-Seg Data Preparation (LIDC Dataset)")
+    print("=" * 70)
+    print(f"Input JSON: {input_json}")
+    print(f"Output directory: {output_dir}")
+    print(f"Split ratios: Train={args.train_ratio}, Val={args.val_ratio}, Test={args.test_ratio}")
+    print(f"Random seed: {args.random_seed}")
+    if base_dir:
+        print(f"Base directory: {base_dir}")
+    
+    # 1. 加载数据集
+    print("\n[Step 1] Loading LIDC dataset from JSON...")
+    patient_data = load_lidc_dataset(input_json, base_dir)
+    
+    if len(patient_data) == 0:
+        raise ValueError("No patient data found! Please check your input JSON file.")
+    
+    # 2. 打印统计信息
+    print_statistics(patient_data)
+    
+    # 3. 划分患者
+    print("\n[Step 2] Splitting patients into train/val/test sets...")
+    patient_ids = list(patient_data.keys())
+    train_ids, val_ids, test_ids = split_patients(
+        patient_ids,
+        train_ratio=args.train_ratio,
+        val_ratio=args.val_ratio,
+        test_ratio=args.test_ratio,
+        random_seed=args.random_seed
+    )
+    
+    # 4. Sanity check
+    sanity_check(train_ids, val_ids, test_ids)
+    
+    # 5. 创建 JSON 文件
+    print("\n[Step 3] Creating JSON files...")
+    create_dataset_json(patient_data, train_ids, output_dir / 'train.json')
+    create_dataset_json(patient_data, val_ids, output_dir / 'val.json')
+    create_dataset_json(patient_data, test_ids, output_dir / 'test.json')
+    
+    # 6. 最终摘要
+    print("\n" + "=" * 70)
+    print("Data preparation completed successfully!")
+    print("=" * 70)
+    print(f"Output files:")
+    print(f"  - {output_dir / 'train.json'}")
+    print(f"  - {output_dir / 'val.json'}")
+    print(f"  - {output_dir / 'test.json'}")
+    print("\nYou can now use these JSON files for training with:")
+    print(f"  python train_net.py --train_data {output_dir / 'train.json'} \\")
+    print(f"                      --val_data {output_dir / 'val.json'}")
+    print(f"\nTest set saved to: {output_dir / 'test.json'}")
+    print("=" * 70)
+
+
+if __name__ == '__main__':
+    main()

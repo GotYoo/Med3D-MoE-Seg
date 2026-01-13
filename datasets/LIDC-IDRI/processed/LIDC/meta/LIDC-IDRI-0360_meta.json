@@ -1,0 +1,96 @@
+{
+  "scan_id": "LIDC-IDRI-0360",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0360_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0360_mask.nii.gz",
+  "text_report": "CT scan with 4 annotated nodule cluster(s). Primary finding: an indeterminate nodule with solid appearance and mildly irregular margin. Overall impression: indeterminate. (Primary nodule mask volume: 468 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 119,
+      "bbox": {
+        "x": [
+          241,
+          251
+        ],
+        "y": [
+          192,
+          201
+        ],
+        "z": [
+          103,
+          118
+        ]
+      },
+      "malignancy_avg": 2.3333333333333335,
+      "spiculation_avg": 1.0,
+      "texture_avg": 3.0,
+      "sphericity_avg": 5.0
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 81,
+      "bbox": {
+        "x": [
+          191,
+          200
+        ],
+        "y": [
+          160,
+          171
+        ],
+        "z": [
+          153,
+          160
+        ]
+      },
+      "malignancy_avg": 2.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 4.0,
+      "sphericity_avg": 4.0
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 652,
+      "bbox": {
+        "x": [
+          254,
+          274
+        ],
+        "y": [
+          331,
+          347
+        ],
+        "z": [
+          146,
+          168
+        ]
+      },
+      "malignancy_avg": 3.0,
+      "spiculation_avg": 1.6666666666666667,
+      "texture_avg": 4.666666666666667,
+      "sphericity_avg": 4.666666666666667
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 468,
+      "bbox": {
+        "x": [
+          274,
+          292
+        ],
+        "y": [
+          206,
+          223
+        ],
+        "z": [
+          216,
+          228
+        ]
+      },
+      "malignancy_avg": 3.25,
+      "spiculation_avg": 2.5,
+      "texture_avg": 4.5,
+      "sphericity_avg": 3.75
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+"""
+LLaVA Architecture - 多模态 Meta Architecture 基类
+直接复用 MedPLIB 的多模态架构实现
+"""
+
+import sys
+import os
+
+# 导入 MedPLIB 的架构实现
+try:
+    from model import (
+        MedPLIB_LlavaMetaModel,
+        MedPLIB_LlavaMetaForCausalLM,
+        HAS_MEDPLIB_ARCH
+    )
+except ImportError:
+    # 如果主 __init__ 没有初始化，直接导入
+    _current_dir = os.path.dirname(os.path.abspath(__file__))
+    _project_root = os.path.dirname(os.path.dirname(_current_dir))
+    MEDPLIB_MODEL_PATH = os.path.join(_project_root, 'submodules/MedPLIB/model')
+    
+    if MEDPLIB_MODEL_PATH not in sys.path:
+        sys.path.insert(0, MEDPLIB_MODEL_PATH)
+    
+    try:
+        from medplib.model.medplib_arch import (
+            LlavaMetaModel as MedPLIB_LlavaMetaModel,
+            LlavaMetaForCausalLM as MedPLIB_LlavaMetaForCausalLM
+        )
+        HAS_MEDPLIB_ARCH = True
+    except ImportError as e:
+        print(f"Warning: Could not import MedPLIB arch: {e}")
+        print("Using fallback implementation")
+        MedPLIB_LlavaMetaModel = None
+        MedPLIB_LlavaMetaForCausalLM = None
+        HAS_MEDPLIB_ARCH = False
+
+
+if HAS_MEDPLIB_ARCH and MedPLIB_LlavaMetaModel is not None:
+    # 直接使用 MedPLIB 的架构实现
+    print("✓ Using MedPLIB LLaVA Architecture")
+    
+    LlavaMetaModel = MedPLIB_LlavaMetaModel
+    LlavaMetaForCausalLM = MedPLIB_LlavaMetaForCausalLM
+    
+else:
+    # 后备实现
+    print("✗ MedPLIB arch not available, using simplified implementation")
+    
+    import torch
+    import torch.nn as nn
+    from typing import Optional, Tuple
+    
+    # 简化的后备实现
+    class LlavaMetaModel:
+        """
+        LLaVA Meta Model 后备实现（简化版）
+        """
+        
+        def get_vision_tower(self):
+            """获取视觉编码器"""
+            vision_tower = getattr(self, 'vision_tower', None)
+            if vision_tower is None:
+                raise ValueError("Vision tower not initialized")
+            return vision_tower
+        
+        def get_model(self):
+            """获取 LLM 主干网络"""
+            model = getattr(self, 'model', None)
+            if model is None:
+                raise ValueError("Language model not initialized")
+            return model
+        
+        def encode_images(self, images):
+            """编码图像"""
+            vision_tower = self.get_vision_tower()
+            image_features = vision_tower(images)
+            return image_features
+    
+    class LlavaMetaForCausalLM:
+        """
+        用于因果语言建模的 LLaVA Meta 类（简化版）
+        """
+        
+        def get_model(self):
+            """获取语言模型"""
+            return self.model
+        
+        def get_vision_tower(self):
+            """获取视觉编码器"""
+            return self.get_model().get_vision_tower()
+        
+        def encode_images(self, images):
+            """编码图像"""
+            return self.get_model().encode_images(images)
+
+
+__all__ = [
+    'LlavaMetaModel',
+    'LlavaMetaForCausalLM',
+    'HAS_MEDPLIB_ARCH',
+]

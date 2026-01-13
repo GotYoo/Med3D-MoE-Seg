@@ -1,0 +1,49 @@
+# Medical Knowledge Base - Sample Entries
+# Format: One entry per line (plain text or JSON)
+
+# Lung Nodule Knowledge
+Pulmonary nodules are small round or oval-shaped growths in the lungs, typically less than 3 cm in diameter. They are often detected incidentally on chest CT scans.
+Ground-glass opacity (GGO) refers to hazy increased lung attenuation with preservation of bronchial and vascular margins, which may represent early-stage adenocarcinoma.
+Solid pulmonary nodules appear as homogeneous soft-tissue attenuation lesions. Spiculated margins suggest malignancy and require further evaluation.
+Subsolid nodules include both pure ground-glass and part-solid nodules. Part-solid nodules have higher malignancy risk than pure GGOs.
+
+# CT Imaging Characteristics
+The Fleischner Society provides guidelines for management of incidentally detected pulmonary nodules based on size and patient risk factors.
+Calcification patterns in pulmonary nodules can help determine benignity: central, diffuse, laminated, or popcorn calcifications typically indicate benign lesions.
+Enhancement patterns on contrast-enhanced CT can help differentiate malignant from benign nodules. Malignant nodules typically show greater enhancement.
+
+# Lung Cancer Staging
+Lung cancer staging follows the TNM classification system: T describes tumor size and extent, N describes lymph node involvement, M describes distant metastases.
+Stage I lung cancer is confined to the lung without lymph node involvement. Stage IA tumors are ≤3 cm, Stage IB are >3 cm but ≤4 cm.
+Stage II lung cancer involves larger tumors or limited lymph node spread. Stage IIA includes tumors >4 cm but ≤5 cm with no lymph node involvement.
+
+# Common Findings
+Emphysema is characterized by permanent enlargement of airspaces distal to terminal bronchioles, with destruction of alveolar walls.
+Pulmonary fibrosis shows reticular opacities, traction bronchiectasis, and honeycombing on HRCT, typically with a basal and peripheral predominant distribution.
+Pneumonia appears as airspace consolidation with air bronchograms on chest radiographs and CT. Lobar distribution suggests bacterial etiology.
+
+# Anatomical Landmarks
+The right lung has three lobes (upper, middle, lower) while the left lung has two lobes (upper, lower) with a lingula.
+The carina is the bifurcation point of the trachea into the right and left main bronchi, located at the level of the T4-T5 vertebrae.
+Mediastinal compartments include anterior (thymus, lymph nodes), middle (heart, great vessels), and posterior (esophagus, descending aorta) divisions.
+
+# Measurement Standards
+Lung nodule measurement should follow RECIST criteria: maximum diameter in axial plane on lung window settings.
+Volumetric analysis provides more accurate nodule growth assessment compared to linear measurements, especially for small nodules.
+
+# Risk Factors
+Smoking history is the strongest risk factor for lung cancer. Pack-years calculation: (packs per day) × (years smoked).
+Occupational exposures including asbestos, radon, and chromium increase lung cancer risk. Asbestos exposure can cause both lung cancer and mesothelioma.
+
+# Follow-up Recommendations
+Lung-RADS categories provide standardized reporting and management recommendations for lung cancer screening CT exams.
+Solid nodules <6 mm typically require no routine follow-up in low-risk patients. Nodules 6-8 mm may require 6-12 month follow-up.
+Ground-glass nodules ≥6 mm typically require follow-up at 3-6 months to assess for persistence, then annual surveillance.
+
+# Differential Diagnosis
+Solitary pulmonary nodule differential includes: primary lung cancer, metastasis, granuloma, hamartoma, arteriovenous malformation, and infectious causes.
+Multiple pulmonary nodules suggest metastatic disease, granulomatous infection, vasculitis, or miliary tuberculosis depending on distribution pattern.
+
+# Treatment Considerations
+Stereotactic body radiation therapy (SBRT) is an option for early-stage lung cancer in patients who are not surgical candidates.
+Wedge resection, segmentectomy, and lobectomy are surgical options for early-stage lung cancer, with lobectomy being the standard of care for stage I disease.

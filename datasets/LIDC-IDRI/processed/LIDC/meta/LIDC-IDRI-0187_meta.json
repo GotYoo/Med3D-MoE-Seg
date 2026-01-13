@@ -1,0 +1,96 @@
+{
+  "scan_id": "LIDC-IDRI-0187",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0187_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0187_mask.nii.gz",
+  "text_report": "CT scan with 4 annotated nodule cluster(s). Primary finding: a highly suspicious malignant nodule with solid appearance and mildly irregular margin. Overall impression: suspicious. (Primary nodule mask volume: 2725 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 82,
+      "bbox": {
+        "x": [
+          179,
+          191
+        ],
+        "y": [
+          328,
+          340
+        ],
+        "z": [
+          80,
+          84
+        ]
+      },
+      "malignancy_avg": 3.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 5.0
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 126,
+      "bbox": {
+        "x": [
+          301,
+          317
+        ],
+        "y": [
+          374,
+          389
+        ],
+        "z": [
+          93,
+          97
+        ]
+      },
+      "malignancy_avg": 2.5,
+      "spiculation_avg": 1.5,
+      "texture_avg": 1.0,
+      "sphericity_avg": 4.0
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 35,
+      "bbox": {
+        "x": [
+          328,
+          337
+        ],
+        "y": [
+          144,
+          154
+        ],
+        "z": [
+          95,
+          99
+        ]
+      },
+      "malignancy_avg": 2.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.0
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 2725,
+      "bbox": {
+        "x": [
+          261,
+          297
+        ],
+        "y": [
+          339,
+          370
+        ],
+        "z": [
+          117,
+          127
+        ]
+      },
+      "malignancy_avg": 4.25,
+      "spiculation_avg": 3.25,
+      "texture_avg": 4.75,
+      "sphericity_avg": 4.5
+    }
+  ]
+}

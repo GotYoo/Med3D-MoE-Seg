@@ -1,0 +1,226 @@
+# Stage 1: 多模态对齐预训练
+# 目标：训练视觉-文本对齐，使CT图像编码和医学报告编码在同一语义空间
+
+# ==================== 模型配置 ====================
+model:
+  type: "Med3DLISA_Stage1_Alignment"
+  
+  # ===== 双编码器架构 =====
+  
+  # 1. CT-CLIP 3D Vision Encoder - 3D CT图像编码
+  ct_clip_encoder:
+    enabled: true
+    # 编码器选择：true=轻量级CNN（显存友好），false=BTB3D MAGViT-2（高质量但需更多显存）
+    use_lightweight: true  # 24GB 显存下仍保持轻量版以留足训练空间
+    vision_tower: "checkpoints/ct_clip_pretrained.ckpt"  # BTB3D预训练权重（use_lightweight=false时使用）
+    mm_vision_select_layer: -2
+    mm_vision_select_feature: "patch"
+    freeze_vision_tower: false  # 24GB 显存可解冻，提升对齐能力
+    hidden_size: 512  # 轻量级输出维度（use_lightweight=true时）或18（BTB3D）
+    use_btb3d_impl: false  # 暂时不使用BTB3D（显存不足）
+  
+  # 2. Pixel Encoder (MedPLIB) - 像素级切片定位
+  pixel_encoder:
+    enabled: true
+    vision_tower: "openai/clip-vit-large-patch14-336"  # MedPLIB使用的CLIP
+    mm_vision_select_layer: -2
+    mm_projector_type: "mlp2x_gelu"
+    freeze_vision_tower: false  # 解冻高层以提升像素-文本对齐
+    use_region_sampler: true  # 使用区域采样器（像素级定位）
+    pixel_hidden_size: 1024
+  
+  # 3. Text Encoder (BioBERT) - 医学文本编码
+  text_encoder:
+    model_name: "dmis-lab/biobert-v1.1"
+    freeze_biobert: false  # 解冻提升跨模态对齐
+    hidden_size: 768
+    freeze_layers: 4   # 仅冻结前4层，后层参与训练
+  
+  # ===== Unified Alignment Module（统一对齐模块）=====
+  alignment:
+    # Feature Fusion（特征融合）
+    ct_clip_dim: 512  # 轻量级encoder输出维度（与ct_clip_encoder.hidden_size一致）
+    pixel_dim: 1024
+    text_dim: 768
+    latent_dim: 512  # 统一潜在空间维度
+    
+    # Contrastive Alignment（对比对齐）
+    contrastive_temperature: 0.05  # 降低温度拉开相似度分布
+    use_cross_attention: true
+    fusion_type: "concat_project"  # concat | add | attention
+    
+    # 多模态输入融合
+    use_clinical_report: true  # 临床报告
+    use_user_instruction: true  # 用户指令
+  
+  # 冻结组件（Stage 1不使用）
+  freeze_components:
+    - "llm"  # LLM完全不加载
+    - "sam"  # SAM完全不加载
+    - "moe"  # MoE完全不加载
+
+# ==================== 数据配置 ====================
+data:
+  dataset_name: "LIDC-IDRI"
+  dataset_type: "LIDCAlignmentDataset"  # 专用于对齐的数据集类
+  
+  # 数据路径
+  data_root: "datasets/LIDC-IDRI/processed/LIDC"
+  train_json: "datasets/LIDC-IDRI/splits/train.json"
+  val_json: "datasets/LIDC-IDRI/splits/val.json"
+  test_json: "datasets/LIDC-IDRI/splits/test.json"
+  
+  # 多输入数据（对应流程图）
+  inputs:
+    ct_volume: true            # CT Volume / MRI Sequence
+    clinical_report: true      # Clinical Report/History
+    user_instruction: true     # User Instruction（可选）
+  
+  # 数据处理（平衡质量与显存：96³+8切片）
+  image_size: [96, 96, 96]  # D, H, W
+  num_slices: 6  # 减少切片以降低显存
+  normalize: true
+  
+  # Stage 1 数据增强（更激进，增强对齐鲁棒性）
+  augmentation:
+    enabled: true
+    random_flip: true
+    random_rotation: true
+    random_scale: [0.8, 1.2]
+    random_intensity: true
+    random_noise: true
+    mixup: false  # 对齐阶段不用mixup
+  
+  # 只使用图像和报告（不需要mask）
+  require_mask: false
+  require_report: true
+  
+  # DataLoader（充分利用CPU预加载）
+  num_workers: 4  # 使用4个worker加速数据加载
+  pin_memory: true
+  prefetch_factor: 2
+
+# ==================== 训练配置 ====================
+training:
+  # 基础配置
+  stage: 1
+  stage_name: "alignment"
+  output_dir: "outputs/stage1_alignment"
+  seed: 42
+  
+  # 训练参数（平衡显存使用：batch=4，梯度累积=8，有效batch=32）
+  num_train_epochs: 100
+  per_device_train_batch_size: 2  # 降低单卡占用，避免 OOM
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 12  # 有效 batch ≈24
+  
+  # 优化器
+  optimizer: "adamw_torch"
+  learning_rate: 1.0e-4  # CLIP冻结，使用正常学习率
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  
+  # 学习率调度
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1  # 10% warmup
+  warmup_steps: 0
+  
+  # 显存优化
+  gradient_checkpointing: true
+  bf16: true
+  fp16: false
+  
+  # Stage 1 损失权重（双视觉+文本对齐）
+  loss_weights:
+    # 3D全局特征 vs 文本
+    ct_clip_text_contrastive: 1.2
+    
+    # 2D像素级特征 vs 文本
+    pixel_text_contrastive: 1.0
+    
+    # 3D全局 vs 2D像素级（视觉内部对齐）
+    ct_clip_pixel_contrastive: 0.7
+    
+    # 统一对齐损失
+    unified_alignment_loss: 1.2
+    intra_modal_loss: 0.2
+  
+  # 评估与保存
+  eval_strategy: "steps"
+  eval_steps: 200
+  save_strategy: "steps"
+  save_steps: 200
+  save_total_limit: 5
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_alignment_acc"
+  greater_is_better: true
+  
+  # 日志
+  logging_strategy: "steps"
+  logging_steps: 10
+  logging_dir: "outputs/stage1_alignment/logs"
+  report_to: ["tensorboard"]
+  
+  # 早停
+  early_stopping_patience: 5
+  early_stopping_threshold: 0.001
+
+# ==================== 评估指标 ====================
+evaluation:
+  metrics:
+    - "alignment_accuracy"  # 对齐准确率
+    - "retrieval_recall@1"  # 图像检索文本 R@1
+    - "retrieval_recall@5"  # 图像检索文本 R@5
+    - "text_retrieval_recall@1"  # 文本检索图像 R@1
+    - "contrastive_loss"
+
+# ==================== DeepSpeed 配置 ====================
+deepspeed:
+  enabled: true
+  config_file: "config/deepspeed_stage1.json"
+  
+  # ZeRO 优化 (Stage 1 可以用 ZeRO-1，因为模型较小)
+  zero_optimization:
+    stage: 1
+    overlap_comm: true
+    contiguous_gradients: true
+  
+  # 混合精度
+  fp16:
+    enabled: false
+  bf16:
+    enabled: true
+  
+  train_batch_size: "auto"
+  train_micro_batch_size_per_gpu: "auto"
+  gradient_accumulation_steps: "auto"
+
+# ==================== 混合精度配置 ====================
+mixed_precision:
+  enabled: true
+  precision: "bf16"
+
+# ==================== Checkpoint 配置 ====================
+checkpoint:
+  save_dir: "outputs/stage1_alignment/checkpoints"
+  resume_from_checkpoint: null  # Stage 1 从头开始
+  
+  # 保存策略（三个编码器）
+  save_ct_clip_encoder: true
+  save_pixel_encoder: true
+  save_text_encoder: true
+  save_alignment_module: true
+
+# ==================== 下一阶段配置 ====================
+next_stage:
+  stage: 2
+  config: "config/stage2_segmentation.yaml"
+  pretrained_checkpoint: "outputs/stage1_alignment/checkpoints/best_model"
+  load_components:
+    - "ct_clip_encoder"
+    - "pixel_encoder"
+    - "text_encoder"
+    - "alignment_module"

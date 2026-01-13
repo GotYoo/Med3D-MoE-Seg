@@ -1,0 +1,96 @@
+{
+  "scan_id": "LIDC-IDRI-0321",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0321_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0321_mask.nii.gz",
+  "text_report": "CT scan with 4 annotated nodule cluster(s). Primary finding: a likely benign nodule with solid appearance and spiculated margin. Overall impression: likely benign. (Primary nodule mask volume: 159 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 159,
+      "bbox": {
+        "x": [
+          389,
+          401
+        ],
+        "y": [
+          151,
+          169
+        ],
+        "z": [
+          129,
+          136
+        ]
+      },
+      "malignancy_avg": 2.6666666666666665,
+      "spiculation_avg": 1.3333333333333333,
+      "texture_avg": 5.0,
+      "sphericity_avg": 2.6666666666666665
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 72,
+      "bbox": {
+        "x": [
+          293,
+          303
+        ],
+        "y": [
+          377,
+          390
+        ],
+        "z": [
+          169,
+          173
+        ]
+      },
+      "malignancy_avg": 1.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.6666666666666665
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 543,
+      "bbox": {
+        "x": [
+          283,
+          304
+        ],
+        "y": [
+          396,
+          414
+        ],
+        "z": [
+          174,
+          184
+        ]
+      },
+      "malignancy_avg": 1.75,
+      "spiculation_avg": 2.25,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.75
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 74,
+      "bbox": {
+        "x": [
+          270,
+          281
+        ],
+        "y": [
+          357,
+          368
+        ],
+        "z": [
+          181,
+          186
+        ]
+      },
+      "malignancy_avg": 1.0,
+      "spiculation_avg": 2.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 5.0
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "num_entries": 27,
+  "embedding_dim": 768,
+  "biobert_model": "dmis-lab/biobert-v1.1",
+  "max_length": 512,
+  "created_date": "1767775345.1067152"
+}

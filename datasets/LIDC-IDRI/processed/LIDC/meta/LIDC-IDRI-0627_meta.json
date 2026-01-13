@@ -1,0 +1,7 @@
+{
+  "scan_id": "LIDC-IDRI-0627",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0627_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0627_mask.nii.gz",
+  "text_report": "No nodules detected in this scan.",
+  "cluster_stats": []
+}

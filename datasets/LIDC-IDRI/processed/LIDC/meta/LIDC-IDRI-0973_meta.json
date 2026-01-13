@@ -1,0 +1,96 @@
+{
+  "scan_id": "LIDC-IDRI-0973",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0973_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0973_mask.nii.gz",
+  "text_report": "CT scan with 4 annotated nodule cluster(s). Primary finding: an indeterminate nodule with solid appearance and spiculated margin. Overall impression: indeterminate. (Primary nodule mask volume: 622 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 622,
+      "bbox": {
+        "x": [
+          387,
+          408
+        ],
+        "y": [
+          173,
+          192
+        ],
+        "z": [
+          42,
+          51
+        ]
+      },
+      "malignancy_avg": 3.6666666666666665,
+      "spiculation_avg": 1.3333333333333333,
+      "texture_avg": 4.666666666666667,
+      "sphericity_avg": 4.333333333333333
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 487,
+      "bbox": {
+        "x": [
+          273,
+          294
+        ],
+        "y": [
+          30,
+          47
+        ],
+        "z": [
+          59,
+          68
+        ]
+      },
+      "malignancy_avg": 2.6666666666666665,
+      "spiculation_avg": 1.3333333333333333,
+      "texture_avg": 4.666666666666667,
+      "sphericity_avg": 4.333333333333333
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 124,
+      "bbox": {
+        "x": [
+          294,
+          307
+        ],
+        "y": [
+          61,
+          79
+        ],
+        "z": [
+          89,
+          94
+        ]
+      },
+      "malignancy_avg": 3.0,
+      "spiculation_avg": 1.6666666666666667,
+      "texture_avg": 4.666666666666667,
+      "sphericity_avg": 3.3333333333333335
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 31,
+      "bbox": {
+        "x": [
+          285,
+          294
+        ],
+        "y": [
+          91,
+          102
+        ],
+        "z": [
+          97,
+          101
+        ]
+      },
+      "malignancy_avg": 2.0,
+      "spiculation_avg": 2.0,
+      "texture_avg": 4.0,
+      "sphericity_avg": 2.0
+    }
+  ]
+}

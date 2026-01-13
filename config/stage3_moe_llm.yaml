@@ -1,0 +1,241 @@
+# Stage 3: MoE + LLM 联合训练
+# 目标：训练LLM生成医学报告，并通过MoE路由专家处理不同特征
+
+# ==================== 模型配置 ====================
+model:
+  type: "Med3DLISA_Stage3_MoE_LLM"
+  
+  # LLM 配置（训练）
+  llm:
+    model_name_or_path: "meta-llama/Llama-2-7b-hf"
+    lora_enable: true  # 使用LoRA微调
+    lora_r: 64
+    lora_alpha: 16
+    lora_dropout: 0.05
+    lora_target_modules: ["q_proj", "v_proj", "k_proj", "o_proj"]
+    lora_bias: "none"
+    
+    # LLM训练配置
+    freeze_llm_layers: 24  # 冻结前24层（共32层），只训练后8层
+    gradient_checkpointing: true  # 节省显存
+  
+  # Vision Tower（冻结，从Stage 1加载）
+  vision:
+    vision_tower: "microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224"
+    freeze_vision_tower: true
+    vision_select_layer: -2
+    mm_projector_type: "mlp2x_gelu"
+    pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/vision_tower.pt"
+  
+  # BioBERT（冻结，从Stage 1加载）
+  biobert:
+    model_name: "dmis-lab/biobert-v1.1"
+    freeze_biobert: true
+    hidden_size: 768
+    pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/biobert.pt"
+  
+  # SAM-Med3D（冻结，从Stage 2加载）
+  sam:
+    sam_type: "vit_b_ori"
+    freeze_sam: true  # 冻结已训练好的分割器
+    pretrained_path: "outputs/stage2_segmentation/checkpoints/best_model/sam.pt"
+  
+  # MoE 配置（训练）
+  moe:
+    num_experts: 8
+    num_experts_per_tok: 2  # Top-2 routing
+    expert_capacity_factor: 1.5
+    load_balancing_loss_coef: 0.01
+    router_aux_loss_coef: 0.01
+    
+    # MoE专家配置
+    expert_hidden_dim: 2048
+    expert_dropout: 0.1
+    use_expert_choice: false
+    
+    # 插入位置（在LLM的哪些层插入MoE）
+    moe_layers: [16, 20, 24, 28]  # 在后半部分插入MoE
+  
+  # Alignment层（冻结）
+  alignment:
+    visual_projection_dim: 768
+    text_projection_dim: 768
+    alignment_hidden_dim: 512
+    freeze_alignment: true
+    pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/alignment.pt"
+  
+  # 冻结组件
+  freeze_components:
+    - "vision_tower"
+    - "biobert"
+    - "sam"
+    - "alignment"
+
+# ==================== 数据配置 ====================
+data:
+  dataset_name: "LIDC-IDRI"
+  dataset_type: "LIDCFullDataset"  # 完整数据集（图像+mask+报告）
+  
+  # 数据路径
+  data_root: "datasets/LIDC-IDRI/processed/LIDC"
+  train_json: "datasets/LIDC-IDRI/splits/train.json"
+  val_json: "datasets/LIDC-IDRI/splits/val.json"
+  test_json: "datasets/LIDC-IDRI/splits/test.json"
+  
+  # 数据处理
+  image_size: [128, 128, 128]  # D, H, W
+  num_slices: 64
+  normalize: true
+  
+  # Stage 3 数据增强（轻度）
+  augmentation:
+    enabled: true
+    random_flip: true
+    random_rotation: false  # LLM阶段减少几何变换
+    random_scale: [0.95, 1.05]
+    random_intensity: true
+  
+  # 需要完整数据
+  require_mask: true
+  require_report: true
+  
+  # Prompt 模板
+  prompt_template: "USER: <image>\nPlease analyze this CT scan and describe the lung nodules. Generate a medical report.\nASSISTANT:"
+  seg_token: "<SEG>"
+  
+  # DataLoader
+  num_workers: 8
+  pin_memory: true
+  prefetch_factor: 2
+
+# ==================== 训练配置 ====================
+training:
+  # 基础配置
+  stage: 3
+  stage_name: "moe_llm"
+  output_dir: "outputs/stage3_moe_llm"
+  seed: 42
+  
+  # 训练参数
+  num_train_epochs: 35
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8  # 有效 batch size = 2 * 8 = 16
+  
+  # 优化器
+  optimizer: "adamw_torch"
+  learning_rate: 2.0e-4  # LLM微调学习率
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  
+  # 学习率调度
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  warmup_steps: 0
+  
+  # Stage 3 损失权重
+  loss_weights:
+    llm_loss: 1.0           # LLM语言建模损失
+    seg_token_loss: 0.5     # 分割token预测损失
+    moe_aux_loss: 0.01      # MoE负载均衡损失
+    router_z_loss: 0.001    # Router Z-loss（稳定性）
+  
+  # 评估与保存
+  eval_strategy: "steps"
+  eval_steps: 400
+  save_strategy: "steps"
+  save_steps: 400
+  save_total_limit: 5
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_bleu"
+  greater_is_better: true
+  
+  # 日志
+  logging_strategy: "steps"
+  logging_steps: 10
+  logging_dir: "outputs/stage3_moe_llm/logs"
+  report_to: ["tensorboard"]
+  
+  # 早停
+  early_stopping_patience: 10
+  early_stopping_threshold: 0.0005
+
+# ==================== 评估指标 ====================
+evaluation:
+  metrics:
+    - "bleu"
+    - "rouge_l"
+    - "meteor"
+    - "bertscore"
+    - "medical_accuracy"  # 医学术语准确率
+  
+  # 生成配置
+  generation:
+    max_new_tokens: 256
+    num_beams: 4
+    temperature: 0.7
+    top_p: 0.9
+    repetition_penalty: 1.2
+
+# ==================== DeepSpeed 配置 ====================
+deepspeed:
+  enabled: true
+  config_file: "config/deepspeed_stage3.json"
+  
+  # ZeRO 优化 (Stage 3，LLM很大)
+  zero_optimization:
+    stage: 2
+    offload_optimizer:
+      device: "cpu"
+      pin_memory: true
+    overlap_comm: true
+    contiguous_gradients: true
+    reduce_bucket_size: 5.0e8
+    stage3_prefetch_bucket_size: 5.0e8
+  
+  # 梯度裁剪
+  gradient_clipping: 1.0
+  
+  # 混合精度
+  fp16:
+    enabled: false
+  bf16:
+    enabled: true
+  
+  train_batch_size: "auto"
+  train_micro_batch_size_per_gpu: "auto"
+  gradient_accumulation_steps: "auto"
+
+# ==================== 混合精度配置 ====================
+mixed_precision:
+  enabled: true
+  precision: "bf16"
+
+# ==================== Checkpoint 配置 ====================
+checkpoint:
+  save_checkpoint: true
+  checkpoint_dir: "outputs/stage3_moe_llm/checkpoints"
+  resume_from_checkpoint: null
+  load_from_stage2: true
+  stage2_checkpoint: "outputs/stage2_segmentation/checkpoints/best_model"
+  
+  # 保存策略
+  save_llm_lora: true
+  save_moe: true
+  save_full_model: false  # 只保存LoRA权重
+
+# ==================== 下一阶段配置 ====================
+next_stage:
+  stage: 4
+  config: "config/stage4_end2end.yaml"
+  pretrained_checkpoint: "outputs/stage3_moe_llm/checkpoints/best_model"
+  load_components:
+    - "llm_lora"
+    - "moe"
+    - "sam"
+    - "vision_tower"
+    - "biobert"
+    - "alignment_head"

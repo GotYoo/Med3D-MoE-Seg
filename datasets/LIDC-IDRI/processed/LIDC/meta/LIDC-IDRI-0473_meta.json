@@ -1,0 +1,96 @@
+{
+  "scan_id": "LIDC-IDRI-0473",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0473_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0473_mask.nii.gz",
+  "text_report": "CT scan with 4 annotated nodule cluster(s). Primary finding: a likely benign nodule with solid appearance and spiculated margin. Overall impression: likely benign. (Primary nodule mask volume: 46 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 91,
+      "bbox": {
+        "x": [
+          216,
+          228
+        ],
+        "y": [
+          36,
+          47
+        ],
+        "z": [
+          84,
+          91
+        ]
+      },
+      "malignancy_avg": 2.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.75
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 68,
+      "bbox": {
+        "x": [
+          161,
+          171
+        ],
+        "y": [
+          108,
+          118
+        ],
+        "z": [
+          123,
+          130
+        ]
+      },
+      "malignancy_avg": 2.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.0
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 46,
+      "bbox": {
+        "x": [
+          298,
+          308
+        ],
+        "y": [
+          437,
+          448
+        ],
+        "z": [
+          143,
+          148
+        ]
+      },
+      "malignancy_avg": 2.5,
+      "spiculation_avg": 1.5,
+      "texture_avg": 4.0,
+      "sphericity_avg": 3.5
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 50,
+      "bbox": {
+        "x": [
+          328,
+          340
+        ],
+        "y": [
+          186,
+          198
+        ],
+        "z": [
+          198,
+          203
+        ]
+      },
+      "malignancy_avg": 2.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 2.6666666666666665,
+      "sphericity_avg": 3.3333333333333335
+    }
+  ]
+}

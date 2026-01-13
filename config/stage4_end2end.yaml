@@ -1,0 +1,272 @@
+# Stage 4: 端到端微调 + RAG + 自我纠正
+# 目标：联合优化所有组件，添加知识检索和自我纠正机制
+
+# ==================== 模型配置 ====================
+model:
+  type: "Med3DLISA_Stage4_Full"
+  
+  # LLM（小学习率微调）
+  llm:
+    model_name_or_path: "meta-llama/Llama-2-7b-hf"
+    lora_enable: true
+    lora_r: 64
+    lora_alpha: 16
+    lora_dropout: 0.05
+    lora_target_modules: ["q_proj", "v_proj", "k_proj", "o_proj"]
+    lora_bias: "none"
+    freeze_llm_layers: 0  # 全部可训练
+    gradient_checkpointing: true
+    pretrained_lora_path: "outputs/stage3_moe_llm/checkpoints/best_model/llm_lora.pt"
+  
+  # Vision Tower（小学习率微调）
+  vision:
+    vision_tower: "microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224"
+    freeze_vision_tower: false  # 解冻，小学习率微调
+    vision_select_layer: -2
+    mm_projector_type: "mlp2x_gelu"
+    pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/vision_tower.pt"
+  
+  # BioBERT（小学习率微调）
+  biobert:
+    model_name: "dmis-lab/biobert-v1.1"
+    freeze_biobert: false  # 解冻
+    hidden_size: 768
+    freeze_layers: 10  # 前10层冻结
+    pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/biobert.pt"
+  
+  # SAM-Med3D（小学习率微调）
+  sam:
+    sam_type: "vit_b_ori"
+    freeze_sam: false  # 解冻
+    use_lora: true
+    lora_r: 16
+    lora_alpha: 32
+    pretrained_path: "outputs/stage2_segmentation/checkpoints/best_model/sam.pt"
+  
+  # MoE（继续训练）
+  moe:
+    num_experts: 8
+    num_experts_per_tok: 2
+    expert_capacity_factor: 1.5
+    load_balancing_loss_coef: 0.01
+    router_aux_loss_coef: 0.01
+    moe_layers: [16, 20, 24, 28]
+    pretrained_path: "outputs/stage3_moe_llm/checkpoints/best_model/moe.pt"
+  
+  # Alignment（小学习率微调）
+  alignment:
+    visual_projection_dim: 768
+    text_projection_dim: 768
+    alignment_hidden_dim: 512
+    freeze_alignment: false
+    pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/alignment.pt"
+  
+  # RAG 配置（新增）
+  rag:
+    enabled: true
+    knowledge_embeddings: "assets/rag_db/knowledge_embeddings.pt"
+    knowledge_texts: "assets/rag_db/knowledge_texts.json"
+    knowledge_dim: 768
+    top_k: 3
+    use_learnable_kb: true  # 知识库可学习
+    retrieval_weight: 0.3
+  
+  # Self-Correction 配置（新增）
+  self_correction:
+    enabled: true
+    consistency_weight: 0.3
+    max_iterations: 2
+    correction_threshold: 0.5
+
+# ==================== 数据配置 ====================
+data:
+  dataset_name: "LIDC-IDRI"
+  dataset_type: "LIDCFullDataset"
+  
+  # 数据路径
+  data_root: "datasets/LIDC-IDRI/processed/LIDC"
+  train_json: "datasets/LIDC-IDRI/splits/train.json"
+  val_json: "datasets/LIDC-IDRI/splits/val.json"
+  test_json: "datasets/LIDC-IDRI/splits/test.json"
+  full_dataset_json: "datasets/LIDC-IDRI/processed/LIDC/lidc_dataset.json"
+  
+  # 数据处理
+  image_size: [128, 128, 128]
+  num_slices: 64
+  normalize: true
+  
+  # Stage 4 数据增强（最轻）
+  augmentation:
+    enabled: true
+    random_flip: true
+    random_rotation: false
+    random_scale: [0.98, 1.02]
+    random_intensity: false
+  
+  require_mask: true
+  require_report: true
+  
+  prompt_template: "USER: <image>\n{question}\nASSISTANT:"
+  seg_token: "<SEG>"
+  
+  num_workers: 8
+  pin_memory: true
+  prefetch_factor: 2
+
+# ==================== 训练配置 ====================
+training:
+  # 基础配置
+  stage: 4
+  stage_name: "end2end"
+  output_dir: "outputs/stage4_end2end"
+  seed: 42
+  
+  # 训练参数（较少epoch，主要是微调）
+  num_train_epochs: 20
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8
+  
+  # 优化器（分层学习率）
+  optimizer: "adamw_torch"
+  learning_rate: 5.0e-5  # 基础学习率（最小）
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  
+  # 分层学习率
+  layer_wise_lr:
+    vision_tower: 1.0e-5   # 最小
+    biobert: 1.0e-5
+    alignment: 2.0e-5
+    sam: 2.0e-5
+    moe: 5.0e-5
+    llm: 5.0e-5            # 相对较大
+    rag: 1.0e-4            # 新组件，较大
+  
+  # 学习率调度
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.05
+  warmup_steps: 0
+  
+  # Stage 4 损失权重（全部任务）
+  loss_weights:
+    seg_loss: 1.0
+    dice_loss: 1.0
+    ce_loss: 1.0
+    llm_loss: 0.5
+    moe_aux_loss: 0.01
+    alignment_loss: 0.1
+    consistency_loss: 0.3
+    rag_retrieval_loss: 0.2
+  
+  # 评估与保存
+  eval_strategy: "steps"
+  eval_steps: 500
+  save_strategy: "steps"
+  save_steps: 500
+  save_total_limit: 3
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_combined_score"  # 综合指标
+  greater_is_better: true
+  
+  # 日志
+  logging_strategy: "steps"
+  logging_steps: 10
+  logging_dir: "outputs/stage4_end2end/logs"
+  report_to: ["tensorboard", "wandb"]  # 添加wandb
+  
+  # 早停
+  early_stopping_patience: 8
+  early_stopping_threshold: 0.0001
+
+# ==================== 评估指标 ====================
+evaluation:
+  metrics:
+    # 分割指标
+    - "dice_score"
+    - "iou"
+    # 文本生成指标
+    - "bleu"
+    - "rouge_l"
+    - "bertscore"
+    # 综合指标
+    - "combined_score"  # dice * 0.5 + bleu * 0.5
+  
+  generation:
+    max_new_tokens: 256
+    num_beams: 4
+    temperature: 0.7
+    top_p: 0.9
+
+# ==================== DeepSpeed 配置 ====================
+deepspeed:
+  enabled: true
+  config_file: "config/deepspeed_stage4.json"
+  
+  zero_optimization:
+    stage: 2
+    offload_optimizer:
+      device: "cpu"
+      pin_memory: true
+    overlap_comm: true
+    contiguous_gradients: true
+    reduce_bucket_size: 5.0e8
+  
+  gradient_clipping: 1.0
+  
+  fp16:
+    enabled: false
+  bf16:
+    enabled: true
+  
+  train_batch_size: "auto"
+  train_micro_batch_size_per_gpu: "auto"
+  gradient_accumulation_steps: "auto"
+
+# ==================== 混合精度配置 ====================
+mixed_precision:
+  enabled: true
+  precision: "bf16"
+
+# ==================== Checkpoint 配置 ====================
+checkpoint:
+  save_checkpoint: true
+  checkpoint_dir: "outputs/stage4_end2end/checkpoints"
+  resume_from_checkpoint: null
+  load_from_stage3: true
+  stage3_checkpoint: "outputs/stage3_moe_llm/checkpoints/best_model"
+  
+  # 保存完整模型
+  save_full_model: true
+  merge_lora: false  # 保持LoRA分离，方便后续使用
+
+# ==================== 推理配置 ====================
+inference:
+  batch_size: 1
+  num_beams: 4
+  max_new_tokens: 512
+  temperature: 0.2
+  top_p: 0.9
+  do_sample: false
+  
+  # 可视化
+  save_visualization: true
+  visualization_dir: "outputs/visualizations"
+  
+  # 后处理
+  post_process:
+    remove_small_objects: true
+    min_object_size: 100
+    fill_holes: true
+
+# ==================== Token 配置 ====================
+tokens:
+  image_token_index: -200
+  seg_token_idx: 32000
+  ignore_index: -100
+  pad_token_id: 0
+  bos_token_id: 1
+  eos_token_id: 2

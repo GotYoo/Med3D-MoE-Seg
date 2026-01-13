@@ -1,0 +1,96 @@
+{
+  "scan_id": "LIDC-IDRI-0942",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0942_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0942_mask.nii.gz",
+  "text_report": "CT scan with 4 annotated nodule cluster(s). Primary finding: a highly suspicious malignant nodule with solid appearance and spiculated margin. Overall impression: suspicious. (Primary nodule mask volume: 1342 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 5632,
+      "bbox": {
+        "x": [
+          316,
+          375
+        ],
+        "y": [
+          90,
+          144
+        ],
+        "z": [
+          79,
+          102
+        ]
+      },
+      "malignancy_avg": 4.285714285714286,
+      "spiculation_avg": 2.5714285714285716,
+      "texture_avg": 4.428571428571429,
+      "sphericity_avg": 4.0
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 1342,
+      "bbox": {
+        "x": [
+          296,
+          322
+        ],
+        "y": [
+          71,
+          93
+        ],
+        "z": [
+          85,
+          98
+        ]
+      },
+      "malignancy_avg": 4.5,
+      "spiculation_avg": 1.75,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.25
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 64,
+      "bbox": {
+        "x": [
+          285,
+          298
+        ],
+        "y": [
+          119,
+          130
+        ],
+        "z": [
+          152,
+          157
+        ]
+      },
+      "malignancy_avg": 1.0,
+      "spiculation_avg": 4.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.0
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 630,
+      "bbox": {
+        "x": [
+          292,
+          308
+        ],
+        "y": [
+          94,
+          118
+        ],
+        "z": [
+          155,
+          166
+        ]
+      },
+      "malignancy_avg": 1.0,
+      "spiculation_avg": 2.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 2.0
+    }
+  ]
+}

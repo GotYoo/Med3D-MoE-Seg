@@ -1,0 +1,227 @@
+# Med3D-MoE-Seg 完整训练配置
+# 支持 4-Stage 架构 + RAG 知识库
+
+# ==================== 模型配置 ====================
+model:
+  type: "Med3DLISA_Full"  # 完整版本（包含 4-Stage 架构）
+  
+  # LLM 配置
+  llm:
+    model_name_or_path: "meta-llama/Llama-2-7b-hf"  # LLaMA 模型路径
+    lora_enable: true
+    lora_r: 64
+    lora_alpha: 16
+    lora_dropout: 0.05
+    lora_target_modules: ["q_proj", "v_proj", "k_proj", "o_proj"]
+    lora_bias: "none"
+  
+  # Vision Tower (CT-CLIP)
+  vision:
+    vision_tower: "microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224"
+    freeze_vision_tower: false
+    vision_select_layer: -2
+    mm_projector_type: "mlp2x_gelu"
+  
+  # MoE 配置
+  moe:
+    num_experts: 8
+    num_experts_per_tok: 2  # Top-2 routing
+    expert_capacity_factor: 1.5
+    load_balancing_loss_coef: 0.01
+    router_aux_loss_coef: 0.01
+  
+  # SAM-Med3D 配置
+  sam:
+    sam_type: "vit_b_ori"
+    sam_checkpoint: "checkpoints/sam_med3d_turbo.pth"
+    freeze_sam: true
+  
+  # BioBERT 配置 (Stage 1: Multi-Modal Alignment)
+  biobert:
+    model_name: "dmis-lab/biobert-v1.1"
+    freeze_biobert: true
+    hidden_size: 768
+    freeze_layers: 12  # 冻结前 12 层
+  
+  # Alignment 配置 (Stage 1)
+  alignment:
+    visual_projection_dim: 768
+    text_projection_dim: 768
+    alignment_hidden_dim: 512
+    contrastive_temperature: 0.07
+  
+  # RAG 配置 (Stage 2: Medical Knowledge Retrieval)
+  rag:
+    enabled: true
+    knowledge_embeddings: "assets/rag_db/knowledge_embeddings.pt"
+    knowledge_texts: "assets/rag_db/knowledge_texts.json"
+    knowledge_dim: 768
+    top_k: 3
+    use_learnable_kb: false
+  
+  # Self-Correction 配置 (Stage 4)
+  self_correction:
+    enabled: true
+    consistency_weight: 0.3
+    max_iterations: 2
+
+# ==================== 数据配置 ====================
+data:
+  dataset_name: "LIDC-IDRI"
+  dataset_type: "LIDCDataset"
+  
+  # 数据路径
+  data_root: "datasets/LIDC-IDRI/processed/LIDC"  # LIDC数据集根目录
+  data_split_dir: "data/splits"  # 数据划分目录
+  
+  # 训练/验证/测试数据（从prepare_data_split.py生成）
+  train_json: "datasets/LIDC-IDRI/splits/train.json"
+  val_json: "datasets/LIDC-IDRI/splits/val.json"
+  test_json: "datasets/LIDC-IDRI/splits/test.json"
+  
+  # 原始数据集JSON（可选，用于重新划分数据）
+  full_dataset_json: "datasets/LIDC-IDRI/processed/LIDC/lidc_dataset.json"
+  
+  # 数据字段（来自lidc_dataset.json）
+  # 每个样本包含：
+  # - scan_id: 扫描ID（如LIDC-IDRI-0001）
+  # - patient_id: 患者ID（与scan_id相同）
+  # - image_path: CT图像路径（.nii.gz）
+  # - mask_path: 掩码路径（.nii.gz）
+  # - text_report: 自然语言报告
+  # - cluster_stats: 结节聚类统计信息
+  
+  # 数据处理
+  image_size: [128, 128, 128]  # D, H, W
+  num_slices: 64
+  normalize: true
+  augmentation:
+    enabled: true
+    random_flip: true
+    random_rotation: true
+    random_scale: [0.9, 1.1]
+  
+  # Prompt 模板
+  prompt_template: "USER: <image>\n{question}\nASSISTANT:"
+  seg_token: "<SEG>"
+  
+  # DataLoader
+  num_workers: 8
+  pin_memory: true
+  prefetch_factor: 2
+
+# ==================== 训练配置 ====================
+training:
+  # 基础配置
+  output_dir: "outputs/med3d_moe_seg_full"
+  seed: 42
+  
+  # 训练参数
+  num_train_epochs: 50
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8  # 有效 batch size = 2 * 8 = 16
+  
+  # 优化器
+  optimizer: "adamw_torch"
+  learning_rate: 2.0e-4
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  
+  # 学习率调度
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  warmup_steps: 0
+  
+  # 损失权重
+  loss_weights:
+    seg_loss: 1.0
+    dice_loss: 1.0
+    ce_loss: 1.0
+    llm_loss: 0.5
+    moe_aux_loss: 0.01
+    alignment_loss: 0.1
+    consistency_loss: 0.3
+  
+  # 评估与保存
+  eval_strategy: "steps"
+  eval_steps: 500
+  save_strategy: "steps"
+  save_steps: 500
+  save_total_limit: 3
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_dice"
+  greater_is_better: true
+  
+  # 日志
+  logging_strategy: "steps"
+  logging_steps: 10
+  logging_dir: "outputs/med3d_moe_seg_full/logs"
+  report_to: ["tensorboard"]
+
+# ==================== DeepSpeed 配置 ====================
+deepspeed:
+  enabled: true
+  config_file: "config/deepspeed_config.json"
+  
+  # ZeRO 优化
+  zero_optimization:
+    stage: 2
+    offload_optimizer:
+      device: "cpu"
+      pin_memory: true
+    overlap_comm: true
+    contiguous_gradients: true
+    reduce_bucket_size: 5.0e8
+    stage3_prefetch_bucket_size: 5.0e8
+    stage3_param_persistence_threshold: 1.0e6
+  
+  # 梯度裁剪
+  gradient_clipping: 1.0
+  
+  # 混合精度
+  fp16:
+    enabled: false
+  bf16:
+    enabled: true
+  
+  # 通信优化
+  train_batch_size: "auto"
+  train_micro_batch_size_per_gpu: "auto"
+  gradient_accumulation_steps: "auto"
+
+# ==================== 混合精度配置 ====================
+mixed_precision:
+  enabled: true
+  precision: "bf16"  # or "fp16"
+  
+# ==================== 推理配置 ====================
+inference:
+  batch_size: 1
+  num_beams: 1
+  max_new_tokens: 512
+  temperature: 0.2
+  top_p: 0.9
+  do_sample: false
+  
+  # 可视化
+  save_visualization: true
+  visualization_dir: "outputs/visualizations"
+  
+  # 后处理
+  post_process:
+    remove_small_objects: true
+    min_object_size: 100
+    fill_holes: true
+
+# ==================== Token 配置 ====================
+tokens:
+  image_token_index: -200
+  seg_token_idx: 32000
+  ignore_index: -100
+  pad_token_id: 0
+  bos_token_id: 1
+  eos_token_id: 2

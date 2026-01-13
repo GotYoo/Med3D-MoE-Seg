@@ -1,0 +1,11 @@
+{
+  "model_type": "med3d_moe_llama",
+  "hidden_size": 4096,
+  "moe_config": {
+    "num_experts": 8,
+    "num_experts_per_tok": 2
+  },
+  "vision_tower": "path/to/ct_clip_pretrained_weights.pth",
+  "mm_projector_type": "mlp2x_gelu",
+  "seg_token_idx": 32000
+}

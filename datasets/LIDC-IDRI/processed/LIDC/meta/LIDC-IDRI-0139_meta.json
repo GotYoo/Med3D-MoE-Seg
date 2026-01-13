@@ -1,0 +1,96 @@
+{
+  "scan_id": "LIDC-IDRI-0139",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0139_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0139_mask.nii.gz",
+  "text_report": "CT scan with 4 annotated nodule cluster(s). Primary finding: a highly suspicious malignant nodule with solid appearance and mildly irregular margin. Overall impression: suspicious. (Primary nodule mask volume: 8254 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 8254,
+      "bbox": {
+        "x": [
+          312,
+          362
+        ],
+        "y": [
+          334,
+          383
+        ],
+        "z": [
+          23,
+          40
+        ]
+      },
+      "malignancy_avg": 5.0,
+      "spiculation_avg": 3.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.0
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 8125,
+      "bbox": {
+        "x": [
+          270,
+          337
+        ],
+        "y": [
+          87,
+          137
+        ],
+        "z": [
+          26,
+          38
+        ]
+      },
+      "malignancy_avg": 4.333333333333333,
+      "spiculation_avg": 1.6666666666666667,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.3333333333333335
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 2077,
+      "bbox": {
+        "x": [
+          352,
+          389
+        ],
+        "y": [
+          290,
+          318
+        ],
+        "z": [
+          38,
+          48
+        ]
+      },
+      "malignancy_avg": 4.0,
+      "spiculation_avg": 2.3333333333333335,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.0
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 44,
+      "bbox": {
+        "x": [
+          280,
+          292
+        ],
+        "y": [
+          356,
+          370
+        ],
+        "z": [
+          48,
+          52
+        ]
+      },
+      "malignancy_avg": 3.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.0
+    }
+  ]
+}

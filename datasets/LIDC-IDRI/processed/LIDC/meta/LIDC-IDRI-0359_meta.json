@@ -1,0 +1,52 @@
+{
+  "scan_id": "LIDC-IDRI-0359",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0359_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0359_mask.nii.gz",
+  "text_report": "CT scan with 2 annotated nodule cluster(s). Primary finding: a likely benign nodule with solid appearance and smooth margin. Overall impression: likely benign. (Primary nodule mask volume: 184 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 184,
+      "bbox": {
+        "x": [
+          312,
+          330
+        ],
+        "y": [
+          453,
+          470
+        ],
+        "z": [
+          26,
+          32
+        ]
+      },
+      "malignancy_avg": 2.75,
+      "spiculation_avg": 3.75,
+      "texture_avg": 4.75,
+      "sphericity_avg": 3.75
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 484,
+      "bbox": {
+        "x": [
+          231,
+          252
+        ],
+        "y": [
+          363,
+          388
+        ],
+        "z": [
+          83,
+          89
+        ]
+      },
+      "malignancy_avg": 1.5,
+      "spiculation_avg": 4.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.5
+    }
+  ]
+}

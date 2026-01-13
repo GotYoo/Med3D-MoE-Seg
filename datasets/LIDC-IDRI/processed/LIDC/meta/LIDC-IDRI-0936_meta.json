@@ -1,0 +1,52 @@
+{
+  "scan_id": "LIDC-IDRI-0936",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0936_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0936_mask.nii.gz",
+  "text_report": "CT scan with 2 annotated nodule cluster(s). Primary finding: a highly suspicious malignant nodule with ground-glass opacity appearance and spiculated margin. Overall impression: suspicious. (Primary nodule mask volume: 2421 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 1414,
+      "bbox": {
+        "x": [
+          181,
+          210
+        ],
+        "y": [
+          351,
+          386
+        ],
+        "z": [
+          129,
+          138
+        ]
+      },
+      "malignancy_avg": 4.0,
+      "spiculation_avg": 2.25,
+      "texture_avg": 2.25,
+      "sphericity_avg": 3.0
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 2421,
+      "bbox": {
+        "x": [
+          274,
+          307
+        ],
+        "y": [
+          117,
+          153
+        ],
+        "z": [
+          145,
+          159
+        ]
+      },
+      "malignancy_avg": 4.25,
+      "spiculation_avg": 1.5,
+      "texture_avg": 1.5,
+      "sphericity_avg": 3.0
+    }
+  ]
+}

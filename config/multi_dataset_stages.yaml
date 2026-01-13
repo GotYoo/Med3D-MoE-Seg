@@ -1,0 +1,286 @@
+# Med3D-MoE-Seg 多数据集分阶段训练配置示例
+# 支持在不同训练阶段使用不同的数据集
+
+# ==================== 全局配置 ====================
+global:
+  project_name: "Med3D-MoE-Seg-MultiDataset"
+  output_dir: "outputs/multi_dataset_training"
+  seed: 42
+
+# ==================== 模型配置 ====================
+model:
+  type: "Med3DLISA_Full"
+  
+  # LLM 配置
+  llm:
+    model_name_or_path: "meta-llama/Llama-2-7b-hf"
+    lora_enable: true
+    lora_r: 64
+    lora_alpha: 16
+  
+  # Vision Tower
+  vision:
+    vision_tower: "microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224"
+    freeze_vision_tower: false
+  
+  # MoE
+  moe:
+    num_experts: 8
+    num_experts_per_tok: 2
+  
+  # SAM-Med3D
+  sam:
+    sam_type: "vit_b_ori"
+    sam_checkpoint: "checkpoints/sam_med3d_turbo.pth"
+    freeze_sam: true
+  
+  # BioBERT (Stage 1)
+  biobert:
+    model_name: "dmis-lab/biobert-v1.1"
+    freeze_biobert: true
+  
+  # RAG (Stage 2)
+  rag:
+    enabled: true
+    knowledge_embeddings: "assets/rag_db/knowledge_embeddings.pt"
+    knowledge_texts: "assets/rag_db/knowledge_texts.json"
+    top_k: 3
+
+# ==================== 分阶段训练数据集配置 ====================
+training_stages:
+  
+  # ====== Stage 1: Multi-Modal Alignment ======
+  # 使用 LIDC 数据集进行视觉-文本对齐训练
+  stage1_alignment:
+    enabled: true
+    dataset: "lidc"  # 使用 LIDC 数据集
+    
+    # 数据路径
+    train_source: "data_splits/lidc/train.json"
+    val_source: "data_splits/lidc/val.json"
+    test_source: "data_splits/lidc/test.json"
+    
+    # 数据集参数
+    dataset_params:
+      data_root: "processed_lidc_data"
+      image_size: [128, 128, 128]
+      normalize: true
+      augmentation: true
+      prompt_template: "USER: <image>\n{question}\nASSISTANT:"
+    
+    # 训练参数
+    training:
+      num_epochs: 20
+      batch_size: 4
+      learning_rate: 2.0e-4
+      gradient_accumulation_steps: 4
+      
+      # 损失权重（只训练对齐模块）
+      loss_weights:
+        alignment_loss: 1.0
+        seg_loss: 0.0
+        llm_loss: 0.0
+    
+    # 冻结策略
+    freeze:
+      llm_backbone: true
+      vision_tower: false
+      sam: true
+  
+  # ====== Stage 2: RAG Knowledge Integration ======
+  # 可以混合多个数据集训练 RAG 检索
+  stage2_rag:
+    enabled: true
+    datasets: ["lidc", "lungct"]  # 混合 LIDC 和 LungCT 数据集
+    
+    # LIDC 配置
+    lidc_config:
+      train_source: "data_splits/lidc/train.json"
+      val_source: "data_splits/lidc/val.json"
+      dataset_params:
+        data_root: "processed_lidc_data"
+        image_size: [128, 128, 128]
+        normalize: true
+        augmentation: true
+    
+    # LungCT 配置（示例）
+    lungct_config:
+      train_source: "data_splits/lungct/train.json"
+      val_source: "data_splits/lungct/val.json"
+      dataset_params:
+        data_root: "processed_lungct_data"
+        image_size: [128, 128, 128]
+        normalize: true
+        augmentation: true
+    
+    # 训练参数
+    training:
+      num_epochs: 30
+      batch_size: 4
+      learning_rate: 1.0e-4
+      
+      # 损失权重
+      loss_weights:
+        alignment_loss: 0.5
+        rag_retrieval_loss: 1.0
+        seg_loss: 0.5
+        llm_loss: 0.0
+    
+    # 冻结策略
+    freeze:
+      llm_backbone: true
+      vision_tower: true
+      biobert: true
+      sam: true
+  
+  # ====== Stage 3: LLM Fine-tuning ======
+  # 使用更大规模的数据集进行 LLM 微调
+  stage3_llm:
+    enabled: true
+    dataset: "msd"  # 使用 Medical Segmentation Decathlon
+    
+    # 数据路径
+    train_source: "data_splits/msd_lung/train.json"
+    val_source: "data_splits/msd_lung/val.json"
+    
+    # 数据集参数
+    dataset_params:
+      data_root: "MSD_Lung_data"
+      image_size: [128, 128, 128]
+      normalize: true
+      augmentation: true
+    
+    # 训练参数
+    training:
+      num_epochs: 40
+      batch_size: 2
+      learning_rate: 5.0e-5
+      gradient_accumulation_steps: 8
+      
+      # 损失权重
+      loss_weights:
+        llm_loss: 1.0
+        seg_loss: 0.5
+        alignment_loss: 0.1
+    
+    # 冻结策略
+    freeze:
+      llm_backbone: false  # 解冻 LLM
+      vision_tower: true
+      biobert: true
+      sam: true
+  
+  # ====== Stage 4: Full Model Training ======
+  # 混合所有数据集进行端到端训练
+  stage4_full:
+    enabled: true
+    datasets: ["lidc", "lungct", "msd"]  # 混合所有数据集
+    
+    # LIDC 配置
+    lidc_config:
+      train_source: "data_splits/lidc/train.json"
+      val_source: "data_splits/lidc/val.json"
+      test_source: "data_splits/lidc/test.json"
+      dataset_params:
+        data_root: "processed_lidc_data"
+        image_size: [128, 128, 128]
+        normalize: true
+        augmentation: true
+    
+    # LungCT 配置
+    lungct_config:
+      train_source: "data_splits/lungct/train.json"
+      val_source: "data_splits/lungct/val.json"
+      dataset_params:
+        data_root: "processed_lungct_data"
+        image_size: [128, 128, 128]
+        normalize: true
+        augmentation: true
+    
+    # MSD 配置
+    msd_config:
+      train_source: "data_splits/msd_lung/train.json"
+      val_source: "data_splits/msd_lung/val.json"
+      dataset_params:
+        data_root: "MSD_Lung_data"
+        image_size: [128, 128, 128]
+        normalize: true
+        augmentation: true
+    
+    # 训练参数
+    training:
+      num_epochs: 50
+      batch_size: 2
+      learning_rate: 2.0e-5
+      gradient_accumulation_steps: 8
+      
+      # 损失权重（所有模块）
+      loss_weights:
+        seg_loss: 1.0
+        dice_loss: 1.0
+        ce_loss: 1.0
+        llm_loss: 0.5
+        moe_aux_loss: 0.01
+        alignment_loss: 0.1
+        consistency_loss: 0.3
+    
+    # 冻结策略（全部解冻）
+    freeze:
+      llm_backbone: false
+      vision_tower: false
+      biobert: false
+      sam: false
+    
+    # Self-Correction
+    self_correction:
+      enabled: true
+      max_iterations: 2
+
+# ==================== 通用训练配置 ====================
+training:
+  # 优化器
+  optimizer: "adamw_torch"
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  max_grad_norm: 1.0
+  
+  # 学习率调度
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  
+  # 评估与保存
+  eval_strategy: "steps"
+  eval_steps: 500
+  save_strategy: "steps"
+  save_steps: 500
+  save_total_limit: 3
+  
+  # 日志
+  logging_steps: 10
+  report_to: ["tensorboard", "wandb"]
+
+# ==================== DataLoader 配置 ====================
+dataloader:
+  num_workers: 8
+  pin_memory: true
+  prefetch_factor: 2
+
+# ==================== DeepSpeed 配置 ====================
+deepspeed:
+  enabled: true
+  zero_stage: 2
+  bf16: true
+  gradient_clipping: 1.0
+
+# ==================== 单数据集简化配置（向后兼容）====================
+# 如果只想使用单个数据集，可以使用以下配置
+simple_mode:
+  enabled: false  # 设置为 true 使用简化模式
+  
+  dataset: "lidc"
+  train_json: "data_splits/train.json"
+  val_json: "data_splits/val.json"
+  test_json: "data_splits/test.json"
+  data_root: "processed_lidc_data"
+  image_size: [128, 128, 128]

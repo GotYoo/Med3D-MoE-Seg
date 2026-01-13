@@ -1,0 +1,96 @@
+{
+  "scan_id": "LIDC-IDRI-0917",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0917_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0917_mask.nii.gz",
+  "text_report": "CT scan with 4 annotated nodule cluster(s). Primary finding: an indeterminate nodule with solid appearance and spiculated margin. Overall impression: indeterminate. (Primary nodule mask volume: 92 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 92,
+      "bbox": {
+        "x": [
+          265,
+          278
+        ],
+        "y": [
+          439,
+          453
+        ],
+        "z": [
+          55,
+          61
+        ]
+      },
+      "malignancy_avg": 3.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.333333333333333
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 94,
+      "bbox": {
+        "x": [
+          116,
+          128
+        ],
+        "y": [
+          405,
+          418
+        ],
+        "z": [
+          63,
+          68
+        ]
+      },
+      "malignancy_avg": 2.0,
+      "spiculation_avg": 2.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 3.0
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 67,
+      "bbox": {
+        "x": [
+          283,
+          296
+        ],
+        "y": [
+          85,
+          97
+        ],
+        "z": [
+          71,
+          75
+        ]
+      },
+      "malignancy_avg": 2.6666666666666665,
+      "spiculation_avg": 1.0,
+      "texture_avg": 4.333333333333333,
+      "sphericity_avg": 4.333333333333333
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 82,
+      "bbox": {
+        "x": [
+          135,
+          145
+        ],
+        "y": [
+          95,
+          108
+        ],
+        "z": [
+          76,
+          81
+        ]
+      },
+      "malignancy_avg": 2.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.0
+    }
+  ]
+}

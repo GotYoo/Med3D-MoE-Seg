@@ -1,0 +1,96 @@
+{
+  "scan_id": "LIDC-IDRI-1004",
+  "image_path": "datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-1004_image.nii.gz",
+  "mask_path": "datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-1004_mask.nii.gz",
+  "text_report": "CT scan with 4 annotated nodule cluster(s). Primary finding: a highly suspicious malignant nodule with solid appearance and smooth margin. Overall impression: suspicious. (Primary nodule mask volume: 10644 voxels.)",
+  "cluster_stats": [
+    {
+      "cluster_id": 0,
+      "voxels": 155,
+      "bbox": {
+        "x": [
+          386,
+          397
+        ],
+        "y": [
+          301,
+          312
+        ],
+        "z": [
+          294,
+          303
+        ]
+      },
+      "malignancy_avg": 2.25,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.25
+    },
+    {
+      "cluster_id": 1,
+      "voxels": 351,
+      "bbox": {
+        "x": [
+          252,
+          267
+        ],
+        "y": [
+          84,
+          101
+        ],
+        "z": [
+          319,
+          328
+        ]
+      },
+      "malignancy_avg": 3.0,
+      "spiculation_avg": 1.0,
+      "texture_avg": 5.0,
+      "sphericity_avg": 4.0
+    },
+    {
+      "cluster_id": 2,
+      "voxels": 10644,
+      "bbox": {
+        "x": [
+          168,
+          216
+        ],
+        "y": [
+          367,
+          419
+        ],
+        "z": [
+          366,
+          396
+        ]
+      },
+      "malignancy_avg": 4.75,
+      "spiculation_avg": 4.25,
+      "texture_avg": 4.25,
+      "sphericity_avg": 3.75
+    },
+    {
+      "cluster_id": 3,
+      "voxels": 526,
+      "bbox": {
+        "x": [
+          143,
+          163
+        ],
+        "y": [
+          153,
+          175
+        ],
+        "z": [
+          401,
+          417
+        ]
+      },
+      "malignancy_avg": 2.6666666666666665,
+      "spiculation_avg": 1.3333333333333333,
+      "texture_avg": 4.666666666666667,
+      "sphericity_avg": 4.0
+    }
+  ]
+}

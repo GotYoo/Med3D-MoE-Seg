@@ -1,0 +1,71 @@
+"""
+MedPLIB MoE LLaMA - Mixture of Experts LLaMA 实现
+直接复用 MedPLIB 的 DeepSpeed MoE 集成
+"""
+
+import sys
+import os
+import torch
+import torch.nn as nn
+from typing import Optional, Tuple
+
+# 导入 MedPLIB 的 MoE 实现
+try:
+    from model import (
+        MedPLIB_MoELlamaModel,
+        MedPLIB_MoELlamaForCausalLM,
+        MedPLIB_MoELlamaConfig,
+        HAS_MEDPLIB_MOE
+    )
+except ImportError:
+    # 如果主 __init__ 没有初始化，直接导入
+    _current_dir = os.path.dirname(os.path.abspath(__file__))
+    _project_root = os.path.dirname(os.path.dirname(_current_dir))
+    MEDPLIB_MODEL_PATH = os.path.join(_project_root, 'submodules/MedPLIB/model')
+    
+    if MEDPLIB_MODEL_PATH not in sys.path:
+        sys.path.insert(0, MEDPLIB_MODEL_PATH)
+    
+    try:
+        from medplib.model.language_model.medplib_moe_llama import (
+            MedPLIBMoELlamaModel as MedPLIB_MoELlamaModel,
+            MedPLIBMoELlamaForCausalLM as MedPLIB_MoELlamaForCausalLM,
+            MedPLIBMoELlamaConfig as MedPLIB_MoELlamaConfig
+        )
+        HAS_MEDPLIB_MOE = True
+    except ImportError as e:
+        print(f"Warning: Could not import MedPLIB MoE: {e}")
+        print("Using fallback LLaMA implementation without MoE")
+        from transformers import LlamaModel, LlamaForCausalLM, LlamaConfig
+        MedPLIB_MoELlamaModel = LlamaModel
+        MedPLIB_MoELlamaForCausalLM = LlamaForCausalLM
+        MedPLIB_MoELlamaConfig = LlamaConfig
+        HAS_MEDPLIB_MOE = False
+
+
+if HAS_MEDPLIB_MOE:
+    # 直接使用 MedPLIB 的 MoE 实现
+    print("✓ Using MedPLIB MoE LLaMA implementation (DeepSpeed MoE integrated)")
+    
+    # 导出 MedPLIB 的类
+    MedPLibMoELlamaConfig = MedPLIB_MoELlamaConfig
+    MedPLibMoELlamaModel = MedPLIB_MoELlamaModel
+    MedPLibMoELlamaForCausalLM = MedPLIB_MoELlamaForCausalLM
+    
+else:
+    # 使用后备实现（不带 MoE）
+    print("✗ MedPLIB MoE not available, using standard LLaMA")
+    
+    from transformers import LlamaModel, LlamaForCausalLM, LlamaConfig
+    
+    MedPLibMoELlamaConfig = LlamaConfig
+    MedPLibMoELlamaModel = LlamaModel
+    MedPLibMoELlamaForCausalLM = LlamaForCausalLM
+
+
+__all__ = [
+    'MedPLibMoELlamaConfig',
+    'MedPLibMoELlamaModel',
+    'MedPLibMoELlamaForCausalLM',
+    'HAS_MEDPLIB_MOE',
+]

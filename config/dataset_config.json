@@ -1,0 +1,5 @@
+{
+  "data_root": "/path/to/nifti/files",
+  "ann_file": "/path/to/annotations.json",
+  "image_size": [128, 128, 128]
+}

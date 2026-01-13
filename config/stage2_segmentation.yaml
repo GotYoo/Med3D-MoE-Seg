@@ -1,0 +1,213 @@
+# Stage 2: 分割器微调
+# 目标：训练SAM-Med3D进行精确的肺结节分割
+
+# ==================== 模型配置 ====================
+model:
+  type: "Med3DLISA_Stage2_Segmentation"
+  
+  # 从 Stage 1 加载（冻结）
+  vision:
+    vision_tower: "microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224"
+    freeze_vision_tower: true  # 冻结已对齐的视觉编码器
+    vision_select_layer: -2
+    mm_projector_type: "mlp2x_gelu"
+    pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/vision_tower.pt"
+  
+  # BioBERT（冻结）
+  biobert:
+    model_name: "dmis-lab/biobert-v1.1"
+    freeze_biobert: true  # 冻结文本编码器
+    hidden_size: 768
+    pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/biobert.pt"
+  
+  # SAM-Med3D 配置（训练）
+  sam:
+    sam_type: "vit_b_ori"
+    sam_checkpoint: "checkpoints/sam_med3d_turbo.pth"  # 预训练权重
+    freeze_sam: false  # 训练SAM
+    freeze_image_encoder: false  # 图像编码器也训练
+    freeze_prompt_encoder: false
+    freeze_mask_decoder: false
+    
+    # SAM 微调配置
+    use_lora: true  # 对SAM使用LoRA
+    lora_r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    
+    # 3D适配
+    enable_3d_adapter: true
+    slice_aggregation: "attention"  # 切片聚合方式
+  
+  # Alignment层（冻结，用于特征融合）
+  alignment:
+    visual_projection_dim: 768
+    text_projection_dim: 768
+    alignment_hidden_dim: 512
+    freeze_alignment: true
+    pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/alignment.pt"
+  
+  # 冻结组件
+  freeze_components:
+    - "llm"
+    - "moe"
+    - "rag"
+
+# ==================== 数据配置 ====================
+data:
+  dataset_name: "LIDC-IDRI"
+  dataset_type: "LIDCSegmentationDataset"  # 专用于分割的数据集类
+  
+  # 数据路径
+  data_root: "datasets/LIDC-IDRI/processed/LIDC"
+  train_json: "datasets/LIDC-IDRI/splits/train.json"
+  val_json: "datasets/LIDC-IDRI/splits/val.json"
+  test_json: "datasets/LIDC-IDRI/splits/test.json"
+  
+  # 数据处理
+  image_size: [128, 128, 128]  # D, H, W
+  num_slices: 64
+  normalize: true
+  
+  # Stage 2 数据增强（中等强度）
+  augmentation:
+    enabled: true
+    random_flip: true
+    random_rotation: true
+    random_scale: [0.9, 1.1]
+    random_intensity: true
+    elastic_deformation: true
+    random_crop: true
+  
+  # 需要图像和mask，报告可选
+  require_mask: true
+  require_report: false
+  
+  # DataLoader
+  num_workers: 8
+  pin_memory: true
+  prefetch_factor: 2
+
+# ==================== 训练配置 ====================
+training:
+  # 基础配置
+  stage: 2
+  stage_name: "segmentation"
+  output_dir: "outputs/stage2_segmentation"
+  seed: 42
+  
+  # 训练参数
+  num_train_epochs: 40
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4  # 有效 batch size = 4 * 4 = 16
+  
+  # 优化器
+  optimizer: "adamw_torch"
+  learning_rate: 5.0e-5  # SAM微调用较小学习率
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  
+  # 学习率调度
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.05
+  warmup_steps: 0
+  
+  # Stage 2 损失权重（分割相关）
+  loss_weights:
+    dice_loss: 1.0        # Dice损失
+    ce_loss: 0.5          # 交叉熵损失
+    focal_loss: 0.3       # Focal损失（处理类别不平衡）
+    boundary_loss: 0.2    # 边界损失
+  
+  # 评估与保存
+  eval_strategy: "steps"
+  eval_steps: 300
+  save_strategy: "steps"
+  save_steps: 300
+  save_total_limit: 5
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_dice"
+  greater_is_better: true
+  
+  # 日志
+  logging_strategy: "steps"
+  logging_steps: 10
+  logging_dir: "outputs/stage2_segmentation/logs"
+  report_to: ["tensorboard"]
+  
+  # 早停
+  early_stopping_patience: 8
+  early_stopping_threshold: 0.001
+
+# ==================== 评估指标 ====================
+evaluation:
+  metrics:
+    - "dice_score"
+    - "iou"
+    - "precision"
+    - "recall"
+    - "hausdorff_distance"
+    - "surface_distance"
+  
+  # 分割后处理
+  post_process:
+    remove_small_objects: true
+    min_object_size: 50
+    fill_holes: true
+
+# ==================== DeepSpeed 配置 ====================
+deepspeed:
+  enabled: true
+  config_file: "config/deepspeed_stage2.json"
+  
+  # ZeRO 优化 (Stage 2，SAM较大)
+  zero_optimization:
+    stage: 2
+    offload_optimizer:
+      device: "cpu"
+      pin_memory: true
+    overlap_comm: true
+    contiguous_gradients: true
+  
+  # 混合精度
+  fp16:
+    enabled: false
+  bf16:
+    enabled: true
+  
+  train_batch_size: "auto"
+  train_micro_batch_size_per_gpu: "auto"
+  gradient_accumulation_steps: "auto"
+
+# ==================== 混合精度配置 ====================
+mixed_precision:
+  enabled: true
+  precision: "bf16"
+
+# ==================== Checkpoint 配置 ====================
+checkpoint:
+  save_checkpoint: true
+  checkpoint_dir: "outputs/stage2_segmentation/checkpoints"
+  resume_from_checkpoint: null
+  load_from_stage1: true
+  stage1_checkpoint: "outputs/stage1_alignment/checkpoints/best_model"
+  
+  # 保存策略
+  save_sam: true
+  save_vision_tower: false  # 已冻结，不需要保存
+  save_alignment_head: false
+
+# ==================== 下一阶段配置 ====================
+next_stage:
+  stage: 3
+  config: "config/stage3_moe_llm.yaml"
+  pretrained_checkpoint: "outputs/stage2_segmentation/checkpoints/best_model"
+  load_components:
+    - "sam"
+    - "vision_tower"
+    - "biobert"
+    - "alignment_head"
