@@ -124,7 +124,13 @@ class MedicalKnowledgeRetriever(nn.Module):
         
         # L2 归一化（用于 Cosine Similarity）
         query_embed = F.normalize(query_embed, dim=-1)  # [B, D]
-        knowledge_embeds = F.normalize(self.knowledge_embeds, dim=-1)  # [N, D]
+        
+        # [Device Fix] Ensure knowledge_embeds is on correct device
+        kb_data = self.knowledge_embeds
+        if kb_data.device != query_embed.device:
+            kb_data = kb_data.to(query_embed.device)
+            
+        knowledge_embeds = F.normalize(kb_data, dim=-1)  # [N, D]
         
         # 计算 Cosine Similarity：[B, N]
         similarity = torch.matmul(query_embed, knowledge_embeds.t())  # [B, N]
@@ -138,7 +144,7 @@ class MedicalKnowledgeRetriever(nn.Module):
         batch_size = query_embed.shape[0]
         retrieved_embeds = []
         for i in range(batch_size):
-            retrieved_embeds.append(self.knowledge_embeds[retrieved_indices[i]])
+            retrieved_embeds.append(kb_data[retrieved_indices[i]])
         retrieved_embeds = torch.stack(retrieved_embeds, dim=0)  # [B, top_k, D]
         
         return retrieved_embeds, retrieved_indices, relevance_scores

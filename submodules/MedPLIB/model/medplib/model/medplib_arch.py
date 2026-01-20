@@ -156,7 +156,7 @@ class LlavaMetaForCausalLM(ABC):
         return image_features, projected_image_features, new_region_feature_map
 
     def prepare_inputs_labels_for_multimodal(
-        self, input_ids, attention_mask, past_key_values, labels, images, region_masks, valid_region_masks_bool
+        self, input_ids, attention_mask, past_key_values, labels, images, region_masks=None, valid_region_masks_bool=None
     ):
         if region_masks is None:
             region_flag = False

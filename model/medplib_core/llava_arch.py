@@ -67,11 +67,15 @@ class LlavaMetaModel:
 
         # if hasattr(config, "mm_vision_tower"):
         self.vision_tower = build_vision_tower(config, delay_load=False)
+        
+        # 如果没有 vision_tower（为 None），使用默认的隐藏层大小
+        mm_hidden_size = config.mm_hidden_size if hasattr(config, 'mm_hidden_size') else config.hidden_size
+        
         # self.mm_projector = nn.Linear(config.mm_hidden_size, config.hidden_size)
         self.mm_projector = build_vision_projector(config)
 
         # if config.region_fea_adapter:
-        self.region_fea_adapter = nn.Linear(config.mm_hidden_size, config.hidden_size)
+        self.region_fea_adapter = nn.Linear(mm_hidden_size, config.hidden_size)
         print('LlavaMetaModel config', config)
 
         # if config.region_geo_sampler:
@@ -153,7 +157,7 @@ class LlavaMetaForCausalLM(ABC):
         return image_features, projected_image_features, new_region_feature_map
 
     def prepare_inputs_labels_for_multimodal(
-        self, input_ids, attention_mask, past_key_values, labels, images, region_masks, valid_region_masks_bool
+        self, input_ids, attention_mask, past_key_values, labels, images, region_masks=None, valid_region_masks_bool=None
     ):
         if region_masks is None:
             region_flag = False

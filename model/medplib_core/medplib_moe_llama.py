@@ -87,6 +87,12 @@ class MedPLIBMoELlamaModel(LlavaMetaModel, LlamaModel):
     def __init__(self, config: LlamaConfig):
         super(MedPLIBMoELlamaModel, self).__init__(config)
 
+    # Some downstream calls expect _prepare_decoder_attention_mask; delegate to LlamaModel implementation.
+    def _prepare_decoder_attention_mask(self, attention_mask, input_shape, inputs_embeds, past_key_values_length):
+        return LlamaModel._prepare_decoder_attention_mask(
+            self, attention_mask, input_shape, inputs_embeds, past_key_values_length
+        )
+
 
 @dataclass
 class MoEBaseModelOutputWithPast(ModelOutput):
@@ -318,6 +324,37 @@ class MedPLIBMoELlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
 
         # Initialize weights and apply final processing
         self.post_init()
+       
+        # [MoE Injection Logic]
+        # Automatically convert to MoE if configured (Ported from Eval class)
+        if hasattr(config, 'moe') and isinstance(config.moe, dict) and config.moe.get('moe_enable', False):
+            self.router_aux_loss_coef = config.moe.get('router_aux_loss_coef', 0.01)
+            moe_layers_idx = config.moe['moe_layers_idx']
+            num_experts_list = config.moe['num_experts']
+
+            rank0_print(f"Initializing MoE Layers for indices: {moe_layers_idx}")
+
+            for num_experts, layer_num in zip(num_experts_list, moe_layers_idx):
+                # Ensure layer_num is valid
+                if layer_num < len(self.model.layers):
+                    # Replace MLP with DeepSpeed MoE
+                    self.model.layers[layer_num].mlp = MoE(
+                        config.hidden_size,
+                        expert=self.model.layers[layer_num].mlp,
+                        num_experts=num_experts,
+                        ep_size=config.moe.get('ep_size', 1),
+                        k=config.moe.get('top_k_experts', 2),
+                        capacity_factor=config.moe.get('capacity_factor', 1.0),
+                        eval_capacity_factor=config.moe.get('eval_capacity_factor', 1.0),
+                        min_capacity=config.moe.get('min_capacity', 4),
+                        use_residual=config.moe.get('use_residual', False),
+                    )
+
+            # Patch forward methods to support MoE output and auxiliary loss
+            for m in self.model.layers:
+                m.forward = MoELlamaDecoderLayer_forward(m)
+            self.model.forward = MoELlamaModel_forward(self.model)
+            rank0_print("MoE Forward methods patched successfully.")
 
     def get_model(self):
         return self.model
@@ -350,14 +387,14 @@ class MedPLIBMoELlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 inputs_embeds,
                 labels
             ) = self.prepare_inputs_labels_for_multimodal(
-                input_ids,
-                # position_ids,
-                attention_mask,
-                past_key_values,
-                labels,
-                images,
-                region_masks,
-                valid_region_masks_bool,
+                input_ids=input_ids,
+                # position_ids=position_ids,
+                attention_mask=attention_mask,
+                past_key_values=past_key_values,
+                labels=labels,
+                images=images,
+                region_masks=region_masks,
+                valid_region_masks_bool=valid_region_masks_bool,
             )
         # import ipdb
         # ipdb.set_trace()

@@ -55,11 +55,40 @@ class Med3DLISAConfig(PretrainedConfig):
         # MoE 配置
         self.num_experts = kwargs.get('num_experts', 8)
         self.num_experts_per_tok = kwargs.get('num_experts_per_tok', 2)
+        self.router_aux_loss_coef = kwargs.get('router_aux_loss_coef', 0.01)
+        
+        # [Compatibility Fix] Populate .moe dictionary for MedPLIB compatibility
+        moe_layers_idx = kwargs.get('moe_layers_idx', list(range(self.num_hidden_layers)))
+        num_experts_list = [self.num_experts] * len(moe_layers_idx)
+        
+        self.moe = {
+            'moe_enable': True,
+            'moe_mode': 'sparse',
+            'moe_layers_idx': moe_layers_idx,
+            'ep_size': 1,
+            'top_k_experts': self.num_experts_per_tok,
+            'capacity_factor': 1.0,
+            'eval_capacity_factor': 1.0,
+            'min_capacity': 4,
+            'use_residual': False,
+            'router_aux_loss_coef': self.router_aux_loss_coef,
+            'num_experts': num_experts_list
+        }
         
         # Vision 配置
-        self.vision_tower = kwargs.get('vision_tower', 'ct_clip')
+        self.vision_tower = kwargs.get('vision_tower', None)  # 允许为 None
+        self.mm_vision_tower = kwargs.get('mm_vision_tower', self.vision_tower)  # Builder 优先查找此字段
+        self.mm_vision_select_layer = kwargs.get('mm_vision_select_layer', -2)  # 选择倒数第二层
+        self.mm_vision_select_feature = kwargs.get('mm_vision_select_feature', 'patch')  # patch/cls_patch
         self.vision_hidden_size = kwargs.get('vision_hidden_size', 768)
+        self.mm_hidden_size = kwargs.get('mm_hidden_size', self.vision_hidden_size)  # vision encoder 输出维度
         self.mm_projector_type = kwargs.get('mm_projector_type', 'mlp2x_gelu')
+        
+        # Region/Sampling 配置（LlavaMetaModel 需要）
+        self.region_fea_adapter = kwargs.get('region_fea_adapter', True)
+        self.region_geo_sampler = kwargs.get('region_geo_sampler', False)
+        self.max_sample_point = kwargs.get('max_sample_point', 196)  # 14x14 patch grid
+        self.sampler_pooler_mode = kwargs.get('sampler_pooler_mode', 'mean')
         
         # 分割配置
         self.seg_token_idx = kwargs.get('seg_token_idx', 32000)
@@ -175,7 +204,14 @@ class Med3DLISAModel(LlavaMetaModel, MedPLibMoELlamaForCausalLM):
         
         # 分割 token 索引
         self.seg_token_idx = getattr(config, 'seg_token_idx', 32000)
+        
+        # MoE Aux Loss Coefficient (Required for MoE models)
+        self.router_aux_loss_coef = getattr(config, 'router_aux_loss_coef', 0.01)
     
+    @property
+    def embed_tokens(self):
+        return self.model.embed_tokens
+
     def _init_mm_projector(self, config):
         """
         初始化多模态投影层
@@ -224,7 +260,12 @@ class Med3DLISA_Full(PreTrainedModel, LlavaMetaForCausalLM):
     """
     
     config_class = Med3DLISAConfig
+    _supports_gradient_checkpointing = True
     
+    @property
+    def supports_gradient_checkpointing(self):
+        return True
+
     def __init__(self, config):
         super(Med3DLISA_Full, self).__init__(config)
         
@@ -240,6 +281,22 @@ class Med3DLISA_Full(PreTrainedModel, LlavaMetaForCausalLM):
     def get_model(self):
         """获取主模型"""
         return self.model
+    
+    def get_input_embeddings(self):
+        """
+        获取输入词嵌入层（Transformers 库要求）
+        用于 resize_token_embeddings 等操作
+        """
+        return self.model.model.embed_tokens
+    
+    def set_input_embeddings(self, value):
+        """
+        设置输入词嵌入层（Transformers 库要求）
+        """
+        self.model.model.embed_tokens = value
+
+    def prepare_inputs_for_generation(self, *args, **kwargs):
+        return self.model.prepare_inputs_for_generation(*args, **kwargs)
     
     def forward(
         self,
@@ -356,6 +413,14 @@ class Med3DLISA_Full(PreTrainedModel, LlavaMetaForCausalLM):
             inputs_embeds = None
         
         # 3.3 LLM 前向传播（MoE-LLaMA 理解与推理）
+        # Clean kwargs to avoid duplicate arguments
+        if 'inputs_embeds' in kwargs:
+            kwargs.pop('inputs_embeds')
+        if 'input_ids' in kwargs:
+            kwargs.pop('input_ids')
+        if 'attention_mask' in kwargs:
+            kwargs.pop('attention_mask')
+            
         outputs = self.model(
             input_ids=input_ids if inputs_embeds is None else None,
             attention_mask=attention_mask,

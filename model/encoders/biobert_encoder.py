@@ -75,6 +75,12 @@ class BioBERTEncoder(nn.Module):
         Returns:
             text_features: [CLS] token embedding [B, 768]
         """
+        # [Device Fix] Check if model device matches input device
+        model_device = next(self.biobert.parameters()).device
+        if input_ids.device != model_device:
+            # print(f"[Debug] BioBERT device mismatch! Inputs: {input_ids.device}, Model: {model_device}. Moving model...")
+            self.biobert.to(input_ids.device)
+            
         # 通过 BioBERT 编码
         outputs = self.biobert(
             input_ids=input_ids,

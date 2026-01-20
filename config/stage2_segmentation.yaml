@@ -7,11 +7,11 @@ model:
   
   # 从 Stage 1 加载（冻结）
   vision:
-    vision_tower: "microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224"
+    vision_tower: null  # Stage 2 不需要 vision tower，主要训练 SAM
     freeze_vision_tower: true  # 冻结已对齐的视觉编码器
     vision_select_layer: -2
     mm_projector_type: "mlp2x_gelu"
-    pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/vision_tower.pt"
+    pretrained_path: null  # Stage 2 暂不加载
   
   # BioBERT（冻结）
   biobert:
@@ -20,17 +20,17 @@ model:
     hidden_size: 768
     pretrained_path: "outputs/stage1_alignment/checkpoints/best_model/biobert.pt"
   
-  # SAM-Med3D 配置（训练）
+  # SAM-Med3D 配置（使用预训练，不训练）
   sam:
     sam_type: "vit_b_ori"
     sam_checkpoint: "checkpoints/sam_med3d_turbo.pth"  # 预训练权重
-    freeze_sam: false  # 训练SAM
-    freeze_image_encoder: false  # 图像编码器也训练
-    freeze_prompt_encoder: false
-    freeze_mask_decoder: false
+    freeze_sam: true  # 冻结 SAM，不训练
+    freeze_image_encoder: true  # 冻结图像编码器
+    freeze_prompt_encoder: true  # 冻结 prompt 编码器
+    freeze_mask_decoder: true  # 冻结 mask 解码器
     
-    # SAM 微调配置
-    use_lora: true  # 对SAM使用LoRA
+    # SAM 微调配置（不使用 LoRA）
+    use_lora: false  # 不使用 LoRA，完全冻结
     lora_r: 16
     lora_alpha: 32
     lora_dropout: 0.05
@@ -52,6 +52,7 @@ model:
     - "llm"
     - "moe"
     - "rag"
+    - "sam"  # 冻结 SAM-Med3D
 
 # ==================== 数据配置 ====================
 data:
@@ -84,8 +85,8 @@ data:
   require_report: false
   
   # DataLoader
-  num_workers: 8
-  pin_memory: true
+  num_workers: 2  # 降低 workers 数量以节省内存
+  pin_memory: false  # 禁用 pin_memory 以节省内存
   prefetch_factor: 2
 
 # ==================== 训练配置 ====================
@@ -96,11 +97,11 @@ training:
   output_dir: "outputs/stage2_segmentation"
   seed: 42
   
-  # 训练参数
-  num_train_epochs: 40
-  per_device_train_batch_size: 4
-  per_device_eval_batch_size: 4
-  gradient_accumulation_steps: 4  # 有效 batch size = 4 * 4 = 16
+  # 训练参数（所有组件冻结，仅验证）
+  num_train_epochs: 1  # 仅运行 1 个 epoch 进行验证
+  per_device_train_batch_size: 1  # 降低 batch size 以节省内存
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 16  # 保持有效 batch size = 1 * 16 = 16
   
   # 优化器
   optimizer: "adamw_torch"
@@ -110,6 +111,11 @@ training:
   adam_beta2: 0.999
   adam_epsilon: 1.0e-8
   max_grad_norm: 1.0
+  
+  # 内存优化
+  gradient_checkpointing: False
+  fp16: false
+  bf16: true  # 使用 bfloat16 以节省内存
   
   # 学习率调度
   lr_scheduler_type: "cosine"

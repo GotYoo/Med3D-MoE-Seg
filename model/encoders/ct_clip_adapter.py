@@ -48,6 +48,7 @@ class CTCLIPVisionTower(nn.Module):
         super().__init__()
         
         self.is_loaded = False
+        self.is_frozen = False  # 添加 is_frozen 属性，默认为 False
         self.vision_tower_path = vision_tower_path
         self.config = config
         
@@ -134,15 +135,19 @@ class CTCLIPVisionTower(nn.Module):
     def freeze(self):
         """冻结模型参数"""
         if hasattr(self, 'vision_tower'):
+            self.vision_tower.eval() # 同样设置为 eval 模式
             for param in self.vision_tower.parameters():
                 param.requires_grad = False
+            self.is_frozen = True
             print("Vision tower frozen")
     
     def unfreeze(self):
         """解冻模型参数"""
         if hasattr(self, 'vision_tower'):
+            self.vision_tower.train()
             for param in self.vision_tower.parameters():
                 param.requires_grad = True
+            self.is_frozen = False
             print("Vision tower unfrozen")
     
     def forward(self, images: torch.Tensor) -> torch.Tensor:
@@ -158,6 +163,24 @@ class CTCLIPVisionTower(nn.Module):
         """
         if not self.is_loaded:
             self.load_model()
+            
+        # [Device Fix] Ensure vision_tower is on the same device as input images
+        # This is critical for frozen modules which might be missed by simple .to(device) calls or ZeRO partitioning
+        if hasattr(self, 'vision_tower'):
+             # We check the first parameter's device
+             try:
+                 first_param = next(self.vision_tower.parameters(), None)
+                 if first_param is not None and first_param.device != images.device:
+                     # print(f"[Debug] Moving Vision Tower from {first_param.device} to {images.device}")
+                     self.vision_tower.to(images.device)
+                 else:
+                     # If no parameters (unlikely), or params match, check buffers (like running_mean)
+                     first_buffer = next(self.vision_tower.buffers(), None)
+                     if first_buffer is not None and first_buffer.device != images.device:
+                         # print(f"[Debug] Moving Vision Tower Buffers from {first_buffer.device} to {images.device}")
+                         self.vision_tower.to(images.device)
+             except Exception as e:
+                 print(f"[Warning] Failed to check/move vision tower device: {e}")
         
         # 调用底层的 vision_tower
         if HAS_BTB3D and hasattr(self, 'vision_tower') and isinstance(self.vision_tower, BTB3D_CTCLIPVisionTower):
@@ -220,9 +243,12 @@ class CTCLIPVisionTower(nn.Module):
     @property
     def hidden_size(self):
         """返回隐藏层维度"""
-        if HAS_BTB3D and hasattr(self, 'vision_tower'):
+        if HAS_BTB3D and hasattr(self, 'vision_tower') and isinstance(self.vision_tower, BTB3D_CTCLIPVisionTower):
             # BTB3D CT-CLIP 使用 CTViT，dim=512
             return 512
+        if hasattr(self, 'use_3d_fallback') and self.use_3d_fallback:
+             # simple_3d_encoder uses 512 by default
+            return getattr(self.vision_tower, 'output_dim', 512)
         return 768  # 后备 CLIP 维度
     
     @property

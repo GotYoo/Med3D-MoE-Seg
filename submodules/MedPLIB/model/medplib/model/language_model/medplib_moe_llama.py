@@ -349,14 +349,14 @@ class MedPLIBMoELlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 inputs_embeds,
                 labels
             ) = self.prepare_inputs_labels_for_multimodal(
-                input_ids,
-                # position_ids,
-                attention_mask,
-                past_key_values,
-                labels,
-                images,
-                region_masks,
-                valid_region_masks_bool,
+                input_ids=input_ids,
+                # position_ids=position_ids,
+                attention_mask=attention_mask,
+                past_key_values=past_key_values,
+                labels=labels,
+                images=images,
+                region_masks=region_masks,
+                valid_region_masks_bool=valid_region_masks_bool,
             )
         # import ipdb
         # ipdb.set_trace()

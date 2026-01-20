@@ -158,7 +158,7 @@ def build_dataloaders_from_config(config, tokenizer=None, stage_name=None):
         data_config = config['data']
         dataset_type = data_config.get('dataset_type', 'LIDCDataset')
         
-        if dataset_type in ['LIDCDataset', 'lidc']:
+        if dataset_type in ['LIDCDataset', 'LIDCSegmentationDataset', 'LIDCFullDataset', 'lidc']:
             # 向后兼容旧的 LIDC 配置
             train_ds = LIDCDataset(
                 data_json=data_config['train_json'],

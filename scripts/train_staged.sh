@@ -8,7 +8,8 @@ set -e  # 遇到错误立即退出
 source ~/anaconda3/bin/activate cv
 
 # 只使用GPU 0（单卡训练，避免DataParallel导致batch_size被分割）
-export CUDA_VISIBLE_DEVICES=3
+# 如果需要多卡，可以修改此处，但注意标准 DDP 不会节省显存，需要 DeepSpeed
+export CUDA_VISIBLE_DEVICES=${3:-"0"}
 
 # RTX 4000 系列显卡 NCCL 配置
 export NCCL_P2P_DISABLE=1
@@ -64,6 +65,7 @@ train_stage1() {
     log_info "Duration: ~100 epochs"
     
     python train_net.py \
+        --do_train \
         --config_file config/stage1_alignment.yaml \
         --data_root datasets/LIDC-IDRI/processed/LIDC \
         --train_json datasets/LIDC-IDRI/splits/train.json \
@@ -104,6 +106,7 @@ train_stage2() {
     log_info "Duration: ~40 epochs"
     
     python train_net.py \
+        --do_train \
         --config_file config/stage2_segmentation.yaml \
         --model_name_or_path gpt2 \
         --data_root ${DATA_ROOT} \
@@ -132,18 +135,45 @@ train_stage3() {
         return 0
     fi
     
-    # 检查Stage 2 checkpoint
+    # 检查 Stage 2 checkpoint 或预训练 SAM
     if [ ! -f "outputs/stage2_segmentation/checkpoints/best_model/sam.pt" ]; then
-        log_error "Stage 2 checkpoint not found! Please run Stage 2 first."
-        exit 1
+        log_info "Stage 2 checkpoint not found, checking for pretrained SAM..."
+        if [ ! -f "checkpoints/sam_med3d_turbo.pth" ]; then
+            log_error "Neither Stage 2 checkpoint nor pretrained SAM found!"
+            log_error "Please download SAM-Med3D to checkpoints/sam_med3d_turbo.pth"
+            exit 1
+        fi
+        log_info "✓ Using pretrained SAM: checkpoints/sam_med3d_turbo.pth"
+    else
+        log_info "✓ Using Stage 2 checkpoint: outputs/stage2_segmentation/checkpoints/best_model/sam.pt"
     fi
     
     log_info "Training LLM with MoE for report generation..."
     log_info "Components: LLaMA-2 (LoRA) + MoE Router"
     log_info "Duration: ~35 epochs"
     
-    python train_net.py \
+    # 移除手动设置的分布式环境变量，交由 torchrun 处理
+    # 也不要使用 DeepSpeed 的 Launcher，尽量保持简单
+    export MASTER_ADDR=localhost
+    export MASTER_PORT=29506
+
+    # 使用 DeepSpeed ZeRO-3 (无 Offload)
+    # 使用 torchrun 启动多卡训练
+    # 指定 GPU 0 和 2 (根据用户需求)
+    export CUDA_VISIBLE_DEVICES=0,1,2
+    # 显存优化配置
+    export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:64
+    export DS_SKIP_COMPLIANCE_CHECK=1
+    
+    # 使用 DeepSpeed ZeRO-2 (带 Offload) 以支持 MoE 并节省显存
+    # 同时防止 MoE not supported with Stage 3 错误
+    torchrun --nproc_per_node=3 --master_port=29506 train_net.py \
+        --do_train \
+        --bf16 \
+        --deepspeed config/ds_config_zero2_no_offload.json \
         --config_file config/stage3_moe_llm.yaml \
+        --data_root ${DATA_ROOT} \
+        --report_to none \
         --output_dir outputs/stage3_moe_llm \
         2>&1 | tee logs/stage3_moe_llm.log
     
@@ -180,7 +210,9 @@ train_stage4() {
     log_info "Duration: ~20 epochs"
     
     python train_net.py \
+        --do_train \
         --config_file config/stage4_end2end.yaml \
+        --data_root ${DATA_ROOT} \
         --output_dir outputs/stage4_end2end \
         2>&1 | tee logs/stage4_end2end.log
     
