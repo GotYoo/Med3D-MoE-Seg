@@ -9,9 +9,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List
 from pathlib import Path
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from model.alignment import AlignmentModel
 
 import torch
-import torch.distributed as dist  # [Add] 用于判断进程 Rank
 import transformers
 from transformers import (
     Trainer,
@@ -27,254 +28,28 @@ from model.meta_arch.med3d_lisa import Med3DLISA, Med3DLISAConfig
 from data.builder import build_dataloader
 from deepspeed.moe.utils import is_moe_param, configure_moe_param_groups
 
-# [Modify] 获取 Rank 信息以控制日志
-local_rank = int(os.environ.get("LOCAL_RANK", -1))
-
-# [Modify] 设置日志：Rank 0 打印 INFO，其他 Rank 只打印 WARN/ERROR
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+_log_level = os.environ.get("LOGLEVEL", "WARNING").upper()
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
-    level=logging.INFO if local_rank in [-1, 0] else logging.WARN,
+    level=getattr(logging, _log_level, logging.WARNING),
 )
 logger = logging.getLogger(__name__)
 
-# [Add] 辅助函数：只在 Rank 0 打印
-def rank0_print(*args, **kwargs):
-    if local_rank in [-1, 0]:
-        print(*args, **kwargs)
+# Backward-compat for older logging guards
+local_rank = int(os.environ.get("LOCAL_RANK", -1))
 
-@dataclass
-class ModelArguments:
-    """模型相关参数"""
-    model_name_or_path: Optional[str] = field(
-        default=None,
-        metadata={"help": "预训练 LLaMA 模型路径（Stage 3/4 需要，Stage 1/2 不需要）"}
-    )
-    model_type: str = field(
-        default="med3d_moe_llama",
-        metadata={"help": "模型类型"}
-    )
-    vision_tower: str = field(
-        default=None,
-        metadata={"help": "CT-CLIP 预训练权重路径"}
-    )
-    mm_projector_type: str = field(
-        default="mlp2x_gelu",
-        metadata={"help": "多模态投影层类型: linear, mlp2x_gelu"}
-    )
-    
-    # MoE 配置
-    num_experts: int = field(
-        default=8,
-        metadata={"help": "MoE 专家数量"}
-    )
-    num_experts_per_tok: int = field(
-        default=2,
-        metadata={"help": "每个 token 激活的专家数量（Top-K）"}
-    )
-    
-    # 分割配置
-    seg_token_idx: int = field(
-        default=32000,
-        metadata={"help": "<SEG> token 的索引"}
-    )
-    image_token_index: int = field(
-        default=-200,
-        metadata={"help": "<image> token 的索引"}
-    )
-    
-    # SAM 配置
-    sam_type: str = field(
-        default="vit_b_ori",
-        metadata={"help": "SAM-Med3D 模型类型"}
-    )
-    sam_checkpoint: Optional[str] = field(
-        default=None,
-        metadata={"help": "SAM-Med3D 预训练权重路径"}
-    )
-    
-    # RAG 配置
-    rag_enabled: bool = field(
-        default=True,
-        metadata={"help": "是否启用 RAG 知识检索"}
-    )
-    rag_knowledge_embeddings: Optional[str] = field(
-        default=None,
-        metadata={"help": "RAG 知识库 embeddings 文件路径"}
-    )
-    rag_knowledge_texts: Optional[str] = field(
-        default=None,
-        metadata={"help": "RAG 知识库文本文件路径"}
-    )
-    rag_top_k: int = field(
-        default=3,
-        metadata={"help": "RAG 检索 Top-K 数量"}
-    )
-    
-    # 训练策略
-    freeze_vision_tower: bool = field(
-        default=True,
-        metadata={"help": "是否冻结视觉编码器"}
-    )
-    freeze_llm_backbone: bool = field(
-        default=False,
-        metadata={"help": "是否冻结 LLM 主干"}
-    )
-    tune_mm_projector: bool = field(
-        default=True,
-        metadata={"help": "是否训练多模态投影层"}
-    )
-    
-    # LoRA 配置
-    use_lora: bool = field(
-        default=False,
-        metadata={"help": "是否使用 LoRA"}
-    )
-    lora_r: int = field(
-        default=8,
-        metadata={"help": "LoRA rank"}
-    )
-    lora_alpha: int = field(
-        default=16,
-        metadata={"help": "LoRA alpha"}
-    )
-    lora_dropout: float = field(
-        default=0.05,
-        metadata={"help": "LoRA dropout"}
-    )
-    lora_target_modules: Optional[List[str]] = field(
-        default=None,
-        metadata={"help": "LoRA 目标模块"}
-    )
+# Reduce HF/Transformers verbosity by default
+try:
+    transformers.utils.logging.set_verbosity_warning()
+except Exception:
+    pass
 
 
-@dataclass
-class DataArguments:
-    """数据相关参数"""
-    data_root: str = field(
-        metadata={"help": "NIfTI 文件根目录"}
-    )
-    ann_file: str = field(
-        default=None,
-        metadata={"help": "标注文件路径（JSON 格式，旧版）"}
-    )
-    
-    # 新版数据划分（由 prepare_data_split.py 生成）
-    dataset_type: str = field(
-        default="LIDCDataset",
-        metadata={"help": "数据集类型: LIDCDataset, BTB3D"}
-    )
-    train_json: Optional[str] = field(
-        default=None,
-        metadata={"help": "训练集 JSON 文件路径"}
-    )
-    val_json: Optional[str] = field(
-        default=None,
-        metadata={"help": "验证集 JSON 文件路径"}
-    )
-    test_json: Optional[str] = field(
-        default=None,
-        metadata={"help": "测试集 JSON 文件路径"}
-    )
-    
-    image_size: List[int] = field(
-        default_factory=lambda: [128, 128, 128],
-        metadata={"help": "图像尺寸 [D, H, W]"}
-    )
-    
-    # 数据加载
-    num_workers: int = field(
-        default=4,
-        metadata={"help": "数据加载的工作进程数"}
-    )
-    max_seq_length: int = field(
-        default=512,
-        metadata={"help": "最大序列长度"}
-    )
-    
-    # YAML 配置文件（推荐）
-    config_file: Optional[str] = field(
-        default=None,
-        metadata={"help": "YAML 配置文件路径（如 config/med3d_lisa_full.yaml）"}
-    )
-
-
-@dataclass
-class TrainingArgumentsWithLoss(TrainingArguments):
-    """扩展的训练参数，包含损失权重"""
-    seg_loss_weight: float = field(
-        default=1.0,
-        metadata={"help": "分割损失权重"}
-    )
-    bce_weight: float = field(
-        default=0.5,
-        metadata={"help": "BCE 损失权重"}
-    )
-    dice_weight: float = field(
-        default=0.5,
-        metadata={"help": "Dice 损失权重"}
-    )
-    
-    # WandB
-    report_to: Optional[List[str]] = field(
-        default_factory=lambda: ["wandb"],
-        metadata={"help": "日志记录工具"}
-    )
-
-
-class Med3DDataCollator:
-    """自定义 DataCollator，处理 3D 图像和文本"""
-    def __init__(self, tokenizer):
-        self.tokenizer = tokenizer
-    
-    def __call__(self, batch):
-        if not batch:
-            return {}
-        
-        # [DEBUG] 检查 keys 是否被恢复
-        if 'image' not in batch[0]:
-             # [Modify] 使用 rank0_print 代替 print
-             if local_rank in [-1, 0]:
-                 print(f"[ERROR] Med3DDataCollator: 'image' key missing even after fix.")
-                 print(f"Available keys: {list(batch[0].keys())}")
-        
-        images = [item['image'] for item in batch]
-        texts = [item['text'] for item in batch]
-        masks = [item.get('mask') for item in batch]
-        
-        # Tokenize 文本
-        tokenized = self.tokenizer(
-            texts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=512
-        )
-        
-        input_ids = tokenized['input_ids']
-        attention_mask = tokenized['attention_mask']
-        labels = input_ids.clone()
-        
-        # 处理 padding 标签
-        if self.tokenizer.pad_token_id is not None:
-             labels[labels == self.tokenizer.pad_token_id] = -100
-        
-        # 堆叠图像
-        images = torch.stack(images, dim=0)
-        
-        # 处理掩码
-        masks_tensor = None
-        if all(m is not None for m in masks):
-            masks_tensor = torch.stack(masks, dim=0)
-            
-        return {
-            'input_ids': input_ids,
-            'attention_mask': attention_mask,
-            'labels': labels,
-            'images': images,
-            'masks': masks_tensor
-        }
-
+from train_utils.args_and_collators import ModelArguments, DataArguments, TrainingArgumentsWithLoss, Med3DDataCollator
+from train_utils.moe_optimizer import create_optimizer_moe
+from train_utils.stage1_manual import run_stage1_manual_alignment
 
 class Med3DLISATrainer(Trainer):
     """
@@ -282,149 +57,12 @@ class Med3DLISATrainer(Trainer):
     """
     
     def create_optimizer(self):
+        """Setup the optimizer with MoE support.
+
+        Refactored: delegating to train_utils.moe_optimizer.create_optimizer_moe
+        to keep this file shorter without changing behavior.
         """
-        Setup the optimizer with MoE support.
-        """
-        opt_model = self.model
-
-        if self.optimizer is None:
-            decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
-            decay_parameters = [name for name in decay_parameters if "bias" not in name]
-
-            # Inspect MoE params early
-            moe_params_all = [(n, p) for n, p in opt_model.named_parameters() if is_moe_param(p)]
-            moe_params_rg = [(n, p) for n, p in moe_params_all if p.requires_grad]
-            logger.info(f"[Med3DLISATrainer] Detected MoE params: total={len(moe_params_all)}, requires_grad={len(moe_params_rg)}")
-            if len(moe_params_rg) == 0 and len(moe_params_all) > 0:
-                logger.warning("[Med3DLISATrainer] MoE params found but all frozen; unfreezing them.")
-            if len(moe_params_all) > 0:
-                sample_moe = [n for n, _ in moe_params_all[:5]]
-                logger.info(f"[Med3DLISATrainer] Sample MoE param names: {sample_moe}")
-            else:
-                logger.warning("[Med3DLISATrainer] No parameters detected by is_moe_param; DeepSpeed will fail if MoE layers exist.")
-            if len(moe_params_rg) == 0:
-                # Force-unfreeze MoE params so they can be optimized
-                for _, p in moe_params_all:
-                    p.requires_grad = True
-                moe_params_rg = [(n, p) for n, p in moe_params_all if p.requires_grad]
-
-            def collect_params(include_decay: bool, moe: bool):
-                params = []
-                for name, param in opt_model.named_parameters():
-                    if not param.requires_grad:
-                        continue
-                    in_decay = name in decay_parameters
-                    # Robust MoE detection: DeepSpeed flag OR name hints
-                    is_moe = is_moe_param(param) or ('experts' in name) or ('deepspeed_moe' in name) or ('moe_layer' in name)
-                    if include_decay != in_decay:
-                        continue
-                    if moe != is_moe:
-                        continue
-                    params.append(param)
-                return params
-
-            base_groups = []
-            base_groups.append({
-                "params": collect_params(include_decay=True, moe=False),
-                "weight_decay": self.args.weight_decay,
-                "name": "decay"
-            })
-            base_groups.append({
-                "params": collect_params(include_decay=False, moe=False),
-                "weight_decay": 0.0,
-                "name": "no_decay"
-            })
-            base_groups.append({
-                "params": collect_params(include_decay=True, moe=True),
-                "weight_decay": self.args.weight_decay,
-                "name": "moe_decay",
-                "moe": True
-            })
-            base_groups.append({
-                "params": collect_params(include_decay=False, moe=True),
-                "weight_decay": 0.0,
-                "name": "moe_no_decay",
-                "moe": True
-            })
-
-            # Let DeepSpeed split MoE groups per expert-parallel group if needed
-            optimizer_grouped_parameters = configure_moe_param_groups(base_groups)
-
-            # Ensure MoE groups have expert group names DeepSpeed expects
-            for g in optimizer_grouped_parameters:
-                if g.get("moe", False):
-                    # Try to pick the group_name from the first param
-                    gn = None
-                    for p in g.get("params", []):
-                        if hasattr(p, "group_name") and p.group_name:
-                            gn = p.group_name
-                            break
-                    if gn is None:
-                        gn = "ep_size_1"
-                    g["name"] = gn
-
-            # Diagnostics
-            total_params = sum(p.numel() for g in optimizer_grouped_parameters for p in g.get("params", []))
-            moe_flagged = sum(1 for g in optimizer_grouped_parameters if g.get("moe", False))
-            moe_param_count = sum(p.numel() for g in optimizer_grouped_parameters if g.get("moe", False) for p in g.get("params", []))
-            moe_detected_params = sum(p.numel() for _, p in opt_model.named_parameters() if is_moe_param(p) and p.requires_grad)
-            logger.info(f"[Med3DLISATrainer] Total params in groups: {total_params}, moe-flagged groups: {moe_flagged}, moe params in groups: {moe_param_count}, detected moe params (requires_grad): {moe_detected_params}")
-            # Per-group summary for visibility
-            group_summaries = []
-            for g in optimizer_grouped_parameters:
-                group_summaries.append({
-                    "name": g.get("name", ""),
-                    "moe": g.get("moe", False),
-                    "param_count": len(g.get("params", [])),
-                    "numel": sum(p.numel() for p in g.get("params", [])),
-                })
-            logger.info(f"[Med3DLISATrainer] Param groups summary: {group_summaries}")
-
-            moe_groups = [g for g in optimizer_grouped_parameters if g.get("moe", False)]
-            total_moe_params = sum(p.numel() for g in moe_groups for p in g.get("params", []))
-            logger.info(f"[Med3DLISATrainer] MoE param groups: {len(moe_groups)}, total params: {total_moe_params}")
-            if not moe_groups:
-                sample_names = [n for n, _ in list(opt_model.named_parameters())[:10]]
-                logger.warning(f"[Med3DLISATrainer] WARNING: No MoE param groups detected. Sample names: {sample_names}")
-                # Fallback: tag any params flagged by is_moe_param so DeepSpeed can proceed
-                for group in optimizer_grouped_parameters:
-                    if any(is_moe_param(p) or 'experts' in (getattr(p, 'name', '') or '') for p in group.get("params", [])):
-                        group["moe"] = True
-                moe_groups = [g for g in optimizer_grouped_parameters if g.get("moe", False)]
-                total_moe_params = sum(p.numel() for g in moe_groups for p in g.get("params", []))
-                logger.info(f"[Med3DLISATrainer] After fallback, MoE groups: {len(moe_groups)}, params: {total_moe_params}")
-
-            # Final safety: ensure at least one group is marked as MoE
-            any_moe = any(g.get("moe", False) for g in optimizer_grouped_parameters)
-            if not any_moe:
-                # First, tag groups that actually contain MoE params
-                tagged = False
-                for group in optimizer_grouped_parameters:
-                    if any(is_moe_param(p) for p in group.get("params", [])):
-                        group["moe"] = True
-                        tagged = True
-                if tagged:
-                    moe_groups = [g for g in optimizer_grouped_parameters if g.get("moe", False)]
-                    total_moe_params = sum(p.numel() for g in moe_groups for p in g.get("params", []))
-                    rank0_print(f"[Med3DLISATrainer] Tagged existing groups with MoE params. MoE groups: {len(moe_groups)}, params: {total_moe_params}")
-                # If still none, create an explicit MoE group with all detected MoE params
-                any_moe = any(g.get("moe", False) for g in optimizer_grouped_parameters)
-                if not any_moe:
-                    explicit_moe_params = [p for _, p in moe_params_rg if p.requires_grad]
-                    optimizer_grouped_parameters.append({
-                        "params": explicit_moe_params,
-                        "weight_decay": 0.0,
-                        "moe": True,
-                        "name": "moe_fallback_explicit"
-                    })
-                    moe_groups = [g for g in optimizer_grouped_parameters if g.get("moe", False)]
-                    total_moe_params = sum(p.numel() for g in moe_groups for p in g.get("params", []))
-                    rank0_print(f"[Med3DLISATrainer] Added explicit MoE group. MoE groups: {len(moe_groups)}, params: {total_moe_params}")
-
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
-            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-
-        return self.optimizer
+        return create_optimizer_moe(self, logger)
     
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         """
@@ -466,7 +104,7 @@ def load_tokenizer(model_args, stage=None):
     """
     # Stage 1 只做对齐，不需要 tokenizer
     if stage == 1:
-        logger.info("Stage 1: Skipping tokenizer loading (not needed for alignment)")
+        logger.debug("Stage 1: Skipping tokenizer loading (not needed for alignment)")
         return None
     
     # Normalize and fallback when missing/placeholder
@@ -494,8 +132,8 @@ def load_tokenizer(model_args, stage=None):
     }
     num_added_tokens = tokenizer.add_special_tokens(special_tokens_dict)
     
-    logger.info(f"Added {num_added_tokens} special tokens to tokenizer")
-    logger.info(f"Special tokens: {tokenizer.additional_special_tokens}")
+    logger.debug(f"Added {num_added_tokens} special tokens to tokenizer")
+    logger.debug(f"Special tokens: {tokenizer.additional_special_tokens}")
     
     return tokenizer
 
@@ -506,21 +144,11 @@ def build_model(model_args, tokenizer, config=None, stage=None, training_args=No
     """
     # Stage 1：只构建对齐模块，不需要完整的 Med3DLISA
     if stage == 1:
-        logger.info("Stage 1: Building alignment-only model (CT-CLIP + MedPLIB + BioBERT)")
+        logger.debug("Stage 1: Building alignment-only model (Unified ViT + Distillation)")
+        # 【Fix】新的 AlignmentModel 只接受一个 config 参数
+        # 所有的参数配置都在 config['model'] 字典里
         from model.alignment import AlignmentModel
-        
-        # 从 config 读取参数
-        model_config = config.get('model', {})
-        alignment_config = model_config.get('alignment', {})
-        
-        model = AlignmentModel(
-            ct_clip_config=model_config.get('ct_clip_encoder', {}),
-            pixel_config=model_config.get('pixel_encoder', {}),
-            text_config=model_config.get('text_encoder', {}),
-            alignment_config=alignment_config,
-        )
-        
-        logger.info("Stage 1 alignment model created (no LLM required)")
+        model = AlignmentModel(config) 
         return model
     
     # Stage 2-4：需要完整模型
@@ -534,7 +162,7 @@ def build_model(model_args, tokenizer, config=None, stage=None, training_args=No
             vision_tower = vision_cfg.get('vision_tower')
             if vision_tower == "null" or vision_tower == "":
                 vision_tower = None
-            logger.info(f"Using vision_tower from YAML config: {vision_tower}")
+            logger.debug(f"Using vision_tower from YAML config: {vision_tower}")
     
     # 创建配置
     lisa_config = Med3DLISAConfig(
@@ -557,7 +185,7 @@ def build_model(model_args, tokenizer, config=None, stage=None, training_args=No
     
     # 检查是否使用 4-bit 量化
     if getattr(model_args, 'load_in_4bit', False):
-        logger.info("Initializing model with 4-bit quantization (BitsAndBytes)...")
+        logger.debug("Initializing model with 4-bit quantization (BitsAndBytes)...")
         from transformers import BitsAndBytesConfig
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -567,7 +195,7 @@ def build_model(model_args, tokenizer, config=None, stage=None, training_args=No
         )
         lisa_config.quantization_config = quantization_config
         
-        logger.info(f"Loading 4-bit model via from_pretrained using {model_args.model_name_or_path}...")
+        logger.debug(f"Loading 4-bit model via from_pretrained using {model_args.model_name_or_path}...")
         # 使用 from_pretrained 的 "meta device" 初始化机制来避免 OOM
         # 必须传入 strict=False (忽略缺失的 vision_tower 等权重)
         model = Med3DLISA.from_pretrained(
@@ -580,10 +208,10 @@ def build_model(model_args, tokenizer, config=None, stage=None, training_args=No
             device_map={"": 0}, # 强制映射到当前GPU (0)
             low_cpu_mem_usage=True
         )
-        logger.info("  ✓ 4-bit model loaded successfully")
+        logger.debug("  ✓ 4-bit model loaded successfully")
         
     else:
-        logger.info(f"Initializing model frame with dtype={dtype} to save memory...")
+        logger.debug(f"Initializing model frame with dtype={dtype} to save memory...")
         # 保存当前的默认 dtype
         orig_dtype = torch.get_default_dtype()
         try:
@@ -601,14 +229,14 @@ def build_model(model_args, tokenizer, config=None, stage=None, training_args=No
     if model_args.freeze_vision_tower:
         vision_tower = model.get_model().get_vision_tower()
         if vision_tower is not None:
-            logger.info("Freezing vision tower")
+            logger.debug("Freezing vision tower")
             vision_tower.freeze()
-            logger.info("Vision tower frozen")
+            logger.debug("Vision tower frozen")
         else:
-            logger.info("No vision tower to freeze (vision_tower is None)")
+            logger.debug("No vision tower to freeze (vision_tower is None)")
     
     if model_args.freeze_llm_backbone:
-        logger.info("Freezing LLM backbone (Main Params)")
+        logger.debug("Freezing LLM backbone (Main Params)")
         # 冻结所有主干参数
         for _, param in model.named_parameters():
             param.requires_grad = False
@@ -621,7 +249,7 @@ def build_model(model_args, tokenizer, config=None, stage=None, training_args=No
                 moe_params += 1
 
         if moe_params > 0:
-            logger.info(f"Unfrozen {moe_params} MoE parameters for training")
+            logger.debug(f"Unfrozen {moe_params} MoE parameters for training")
         else:
             logger.warning("freeze_llm_backbone is set, but no MoE parameters were unfrozen; DeepSpeed MoE will fail.")
         
@@ -630,7 +258,7 @@ def build_model(model_args, tokenizer, config=None, stage=None, training_args=No
             model.enable_input_require_grads()
     
     if not model_args.tune_mm_projector:
-        logger.info("Freezing mm_projector")
+        logger.debug("Freezing mm_projector")
         for param in model.get_model().mm_projector.parameters():
             param.requires_grad = False
     
@@ -638,7 +266,7 @@ def build_model(model_args, tokenizer, config=None, stage=None, training_args=No
     if model_args.use_lora:
         from peft import LoraConfig, get_peft_model
         
-        logger.info("Applying LoRA")
+        logger.debug("Applying LoRA")
         lora_config = LoraConfig(
             r=model_args.lora_r,
             lora_alpha=model_args.lora_alpha,
@@ -661,57 +289,13 @@ def main():
     # 这里我们手动处理一下 config 文件加载，以防 argparse 顺序问题导致配置未生效。
     
     parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArgumentsWithLoss))
-    
-    # 临时：为了确保 override 生效，首先读取 config_file 路径
-    import sys
-    config_file_path = None
-    for i, arg in enumerate(sys.argv):
-        if arg == "--config_file" and i + 1 < len(sys.argv):
-            config_file_path = sys.argv[i+1]
-            break
-            
-    # 解析 dataclasses
+
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-    
-    # 手动强制重新加载 config 并覆盖 model_args
-    # 这是因为 HfArgumentParser 解析顺序可能导致之前的更新逻辑未按预期执行，或者被之后的数据覆盖
-    if config_file_path:
-        import yaml
-        logger.info(f"Double-checking config from {config_file_path}...")
-        with open(config_file_path, 'r') as f:
-            config = yaml.safe_load(f)
-            
-        # 强制更新 MoE (最关键的内存因素)
-        if 'model' in config and 'moe' in config['model']:
-             moe_cfg = config['model']['moe']
-             if 'num_experts' in moe_cfg:
-                 logger.warning(f"Forcing override: num_experts {model_args.num_experts} -> {moe_cfg['num_experts']}")
-                 model_args.num_experts = moe_cfg['num_experts']
-             if 'num_experts_per_tok' in moe_cfg:
-                 logger.warning(f"Forcing override: num_experts_per_tok {model_args.num_experts_per_tok} -> {moe_cfg['num_experts_per_tok']}")
-                 model_args.num_experts_per_tok = moe_cfg['num_experts_per_tok']
-                 
-        # 强制更新 LLM Load & 4-bit
-        if 'model' in config and 'llm' in config['model']:
-            llm_cfg = config['model']['llm']
-            if 'model_name_or_path' in llm_cfg:
-                 logger.warning(f"Forcing override: model_name {model_args.model_name_or_path} -> {llm_cfg['model_name_or_path']}")
-                 model_args.model_name_or_path = llm_cfg['model_name_or_path']
-            if 'load_in_4bit' in llm_cfg:
-                 logger.warning(f"Forcing override: load_in_4bit -> {llm_cfg['load_in_4bit']}")
-                 model_args.load_in_4bit = llm_cfg['load_in_4bit']
-                 
-        # 强制更新 LoRA
-        if 'model' in config and 'llm' in config['model']:
-             llm_cfg = config['model']['llm']
-             if 'lora_enable' in llm_cfg:
-                  model_args.use_lora = llm_cfg['lora_enable']
-                  
     # 如果提供了 YAML 配置文件，优先使用
     config = None
     if data_args.config_file is not None:
         import yaml
-        logger.info(f"Loading config from {data_args.config_file}")
+        logger.debug(f"Loading config from {data_args.config_file}")
         with open(data_args.config_file, 'r') as f:
             config = yaml.safe_load(f)
         
@@ -725,8 +309,6 @@ def main():
             if data_args.test_json is None:
                 data_args.test_json = data_config.get('test_json')
             data_args.dataset_type = data_config.get('dataset_type', 'LIDCDataset')
-            # [Modify] 使用 rank0_print
-            rank0_print(f"[DEBUG] Set dataset_type from config: {data_args.dataset_type}")
         
         # 从config覆盖TrainingArguments的关键参数
         if 'training' in config:
@@ -743,7 +325,7 @@ def main():
                 training_args.bf16 = train_cfg['bf16']
             if 'gradient_checkpointing' in train_cfg:
                 training_args.gradient_checkpointing = train_cfg['gradient_checkpointing']
-            logger.info("✓ Training args overridden from config file")
+            logger.debug("✓ Training args overridden from config file")
         
         # 更新 RAG 参数
         if 'model' in config and 'rag' in config['model']:
@@ -779,7 +361,7 @@ def main():
             if 'load_in_4bit' in llm_cfg:
                 model_args.load_in_4bit = llm_cfg['load_in_4bit']
                  
-            logger.info(f"✓ Model args updated from config: use_lora={model_args.use_lora}, load_in_4bit={getattr(model_args, 'load_in_4bit', False)}")
+            logger.debug(f"✓ Model args updated from config: use_lora={model_args.use_lora}, load_in_4bit={getattr(model_args, 'load_in_4bit', False)}")
 
         # 补充：从 config['model']['vision'] 更新 vision args
         if 'model' in config and 'vision' in config['model']:
@@ -796,88 +378,39 @@ def main():
                 model_args.num_experts = moe_cfg['num_experts']
             if 'num_experts_per_tok' in moe_cfg:
                 model_args.num_experts_per_tok = moe_cfg['num_experts_per_tok']
-            logger.info(f"✓ MoE args updated from config: experts={model_args.num_experts}, top_k={model_args.num_experts_per_tok}")
+            logger.debug(f"✓ MoE args updated from config: experts={model_args.num_experts}, top_k={model_args.num_experts_per_tok}")
     
     # 检测当前训练阶段（必须在使用stage之前）
     stage = None
     if config is not None and 'training' in config:
         stage = config['training'].get('stage', None)
-        # [Modify] 使用 rank0_print
-        rank0_print(f"[DEBUG] Detected training stage: {stage}")
-        rank0_print(f"[DEBUG] Config has 'training' section: True")
-    else:
-        # [Modify] 使用 rank0_print
-        rank0_print(f"[DEBUG] No stage detected. config is None: {config is None}")
-        if config is not None:
-            rank0_print(f"[DEBUG] Config keys: {list(config.keys())}")
-    
-    # [Modify] 再次确认日志级别 (防止被库重置)
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO if local_rank in [-1, 0] else logging.WARN,
-        handlers=[logging.StreamHandler()],
-    )
-    logger.setLevel(logging.INFO if local_rank in [-1, 0] else logging.WARN)
     
     # 简洁日志：只输出关键训练参数
-    logger.info("=" * 60)
-    logger.info("Training Configuration:")
-    logger.info(f"  Stage: {stage}")
-    logger.info(f"  Output: {training_args.output_dir}")
-    logger.info(f"  Epochs: {training_args.num_train_epochs}")
-    logger.info(f"  Batch size per GPU: {training_args.per_device_train_batch_size}")
-    logger.info(f"  Gradient accumulation: {training_args.gradient_accumulation_steps}")
-    logger.info(f"  Learning rate: {training_args.learning_rate}")
-    logger.info(f"  Mixed precision: bf16={training_args.bf16}, fp16={training_args.fp16}")
-    logger.info(f"  Gradient checkpointing: {training_args.gradient_checkpointing}")
-    logger.info(f"  Available GPUs: {torch.cuda.device_count()}")
-    logger.info("=" * 60)
-    
-    logger.info(f"RAG enabled: {model_args.rag_enabled}")
-    if model_args.rag_enabled:
-        logger.info(f"  - Knowledge embeddings: {model_args.rag_knowledge_embeddings}")
-        logger.info(f"  - Knowledge texts: {model_args.rag_knowledge_texts}")
-        logger.info(f"  - Top-K: {model_args.rag_top_k}")
-    
     # 检测 checkpoint
     last_checkpoint = None
     if os.path.isdir(training_args.output_dir):
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
         if last_checkpoint is not None:
-            logger.info(f"Checkpoint detected, resuming training at {last_checkpoint}")
-    
-    # 清理 GPU 缓存
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.reset_peak_memory_stats()
-        free_mem = torch.cuda.mem_get_info()[0] / 1024**3
-        logger.info(f"GPU memory cleared. Available: {free_mem:.2f} GB")
+            logger.debug(f"Checkpoint detected, resuming training at {last_checkpoint}")
     
     # 加载 tokenizer（Stage 1 跳过）
-    logger.info("Loading tokenizer...")
+    logger.debug("Loading tokenizer...")
     tokenizer = load_tokenizer(model_args, stage=stage)
     
     # 构建模型
-    logger.info("Building model...")
+    logger.debug("Building model...")
     model = build_model(model_args, tokenizer, config=config, stage=stage, training_args=training_args)
     
     # 内存优化：在 Trainer 初始化前将模型转换为半精度
     if training_args.bf16:
-        logger.info("Ensuring model is in bfloat16...")
+        logger.debug("Ensuring model is in bfloat16...")
         model = model.to(torch.bfloat16)
     elif training_args.fp16:
-        logger.info("Ensuring model is in float16...")
+        logger.debug("Ensuring model is in float16...")
         model = model.to(torch.float16)
     
     # 构建数据加载器
-    logger.info("Building dataloaders...")
-    
-    # [Modify] 避免多进程同时 print 到 stderr
-    if local_rank in [-1, 0]:
-        import sys
-        sys.stderr.write(f"[DEBUG] Before dataloader: stage={stage}, config is not None={config is not None}, dataset_type={data_args.dataset_type}\n")
-        sys.stderr.flush()
+    logger.debug("Building dataloaders...")
     
     # Stage 1：使用对齐数据集
     if stage == 1:
@@ -893,24 +426,26 @@ def main():
         image_size = tuple(data_config.get('image_size', [96, 96, 96]))
         num_slices = data_config.get('num_slices', 8)
         
-        logger.info(f"Data configuration:")
-        logger.info(f"  Image size: {image_size}")
-        logger.info(f"  Num slices: {num_slices}")
+        logger.debug(f"Data configuration:")
+        logger.debug(f"  Image size: {image_size}")
+        logger.debug(f"  Num slices: {num_slices}")
         
         train_dataset = LIDCAlignmentDataset(
             data_root=data_args.data_root,
-            annotation_file=data_args.train_json,
+            data_source=data_args.train_json,
             image_size=image_size,
             num_slices=num_slices,
+            require_mask=config.get('data', {}).get('require_mask', False)
         )
         
         val_dataset = None
         if data_args.val_json:
             val_dataset = LIDCAlignmentDataset(
                 data_root=data_args.data_root,
-                annotation_file=data_args.val_json,
+                data_source=data_args.val_json,
                 image_size=image_size,
                 num_slices=num_slices,
+                require_mask=config.get('data', {}).get('require_mask', False)
             )
         
         # 创建 DataLoader
@@ -936,33 +471,32 @@ def main():
                 pin_memory=True,
             )
         
-        logger.info(f"Stage 1 alignment datasets created")
-        logger.info(f"  - Train samples: {len(train_dataset)}")
+        logger.debug(f"Stage 1 alignment datasets created")
+        logger.debug(f"  - Train samples: {len(train_dataset)}")
         if val_dataset:
-            logger.info(f"  - Val samples: {len(val_dataset)}")
+            logger.debug(f"  - Val samples: {len(val_dataset)}")
     
     elif (config is not None and data_args.dataset_type in ['LIDCDataset', 'LIDCSegmentationDataset', 'LIDCFullDataset']) or \
          (str(stage) in ['2', '3', '4']):
-        logger.warning(f"DEBUG: Entering new LIDC dataset block (Force Save)")
         # 使用新版 LIDC 数据集（从 YAML 配置）
-        logger.info(f"Detected dataset_type: {data_args.dataset_type}")
-        logger.info(f"Loading LIDC dataset from config...")
+        logger.debug(f"Detected dataset_type: {data_args.dataset_type}")
+        logger.debug(f"Loading LIDC dataset from config...")
         from data.builder import build_dataloaders_from_config
         
         train_dataloader, val_dataloader, test_dataloader = build_dataloaders_from_config(
             config, tokenizer=None, stage_name=config.get('training', {}).get('stage_name') if config and 'training' in config else None
         )
-        logger.info(f"Using {data_args.dataset_type} with patient-wise split")
-        logger.info(f"  - Train samples: {len(train_dataloader.dataset)}")
+        logger.debug(f"Using {data_args.dataset_type} with patient-wise split")
+        logger.debug(f"  - Train samples: {len(train_dataloader.dataset)}")
         if val_dataloader:
-            logger.info(f"  - Val samples: {len(val_dataloader.dataset)}")
+            logger.debug(f"  - Val samples: {len(val_dataloader.dataset)}")
         if test_dataloader:
-            logger.info(f"  - Test samples: {len(test_dataloader.dataset)}")
+            logger.debug(f"  - Test samples: {len(test_dataloader.dataset)}")
     else:
         # 使用旧版数据集（保持向后兼容）
-        logger.info(f"Falling back to legacy BTB3D dataset")
-        logger.info(f"  config is not None: {config is not None}")
-        logger.info(f"  dataset_type: {data_args.dataset_type}")
+        logger.debug(f"Falling back to legacy BTB3D dataset")
+        logger.debug(f"  config is not None: {config is not None}")
+        logger.debug(f"  dataset_type: {data_args.dataset_type}")
         from data.builder import build_dataloader
         
         dataset_config = {
@@ -980,163 +514,19 @@ def main():
         )
         val_dataloader = None
         test_dataloader = None
-        logger.info(f"Using legacy BTB3D dataset") 
-        logger.info(f"  - Train samples: {len(train_dataloader.dataset)}")
+        logger.debug(f"Using legacy BTB3D dataset") 
+        logger.debug(f"  - Train samples: {len(train_dataloader.dataset)}")
     
+
     # 初始化 Trainer
     if stage == 1:
-        # Stage 1：多GPU训练循环
-        logger.info("*** Stage 1: Alignment Training ***")
-        
-        # 显存优化：设置每个GPU最多使用90%显存
-        n_gpus = torch.cuda.device_count()
-        logger.info(f"Available GPUs: {n_gpus}")
-        
-        for i in range(n_gpus):
-            # 限制每个GPU使用90%显存，避免碎片化
-            torch.cuda.set_per_process_memory_fraction(0.9, device=i)
-            logger.info(f"GPU {i}: Set memory fraction to 0.9")
-        
-        # 清理显存
-        torch.cuda.empty_cache()
-        
-        # 设置设备（支持多GPU）
-        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        logger.info(f"Primary device: {device}")
-        
-        # 确保所有子模块都在cuda:0上（解决DataParallel设备不一致问题）
-        def move_to_device(module):
-            """递归移动所有子模块到指定设备"""
-            for child in module.children():
-                move_to_device(child)
-            # 移动当前模块的参数和缓冲区
-            for param in module.parameters(recurse=False):
-                if param.device != device:
-                    param.data = param.data.to(device)
-            for buffer in module.buffers(recurse=False):
-                if buffer.device != device:
-                    buffer.data = buffer.data.to(device)
-        
-        # 先将模型完全移到cuda:0
-        logger.info("Moving model to cuda:0...")
-        move_to_device(model)
-        model = model.to(device)
-        logger.info(f"Model moved to {device}")
-        
-        # 如果有多个GPU，使用DataParallel
-        if n_gpus > 1:
-            model = torch.nn.DataParallel(model, device_ids=list(range(n_gpus)))
-            logger.info(f"Using DataParallel across GPUs: {list(range(n_gpus))}")
-        
-        # 优化器
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=training_args.learning_rate,
-            weight_decay=training_args.weight_decay,
-        )
-        
-        # 学习率调度器
-        from torch.optim.lr_scheduler import CosineAnnealingLR
-        scheduler = CosineAnnealingLR(
-            optimizer,
-            T_max=training_args.num_train_epochs * len(train_dataloader),
-        )
-        
-        # 训练循环
-        global_step = 0
-        best_loss = float('inf')
-        
-        from tqdm import tqdm
-        
-        logger.info("Starting training loop...")
-        for epoch in range(int(training_args.num_train_epochs)):
-            model.train()
-            epoch_loss = 0.0
-            
-            logger.info(f"\n{'='*60}")
-            logger.info(f"Epoch {epoch+1}/{int(training_args.num_train_epochs)}")
-            logger.info(f"{'='*60}")
-            
-            # 使用tqdm显示进度条
-            progress_bar = tqdm(
-                enumerate(train_dataloader),
-                total=len(train_dataloader),
-                desc=f"Epoch {epoch+1}",
-                ncols=100,
-                disable=local_rank not in [-1, 0] # [Modify] 非主进程不显示进度条
-            )
-            
-            for batch_idx, batch in progress_bar:
-                
-                # 将数据移到设备
-                ct_volume = batch['ct_volume'].to(device)
-                ct_slices = batch['ct_slices'].to(device)
-                text_inputs = {
-                    k: v.to(device) for k, v in batch['text_inputs'].items()
-                }
-                
-                if batch_idx == 0:
-                    logger.info(f"First batch loaded, shapes: ct_volume={ct_volume.shape}, ct_slices={ct_slices.shape}")
-                
-                # 前向传播
-                outputs = model(
-                    ct_volume=ct_volume,
-                    ct_slices=ct_slices,
-                    text_inputs=text_inputs,
-                )
-                
-                loss = outputs['loss']
-                
-                # 调试：检查loss是否有效
-                if batch_idx == 0 and epoch == 0:
-                    logger.info(f"DEBUG: outputs keys: {outputs.keys()}")
-                    logger.info(f"DEBUG: loss value: {loss}")
-                    logger.info(f"DEBUG: loss type: {type(loss)}")
-                    if 'ct_clip_text_loss' in outputs:
-                        logger.info(f"DEBUG: ct_clip_text_loss: {outputs['ct_clip_text_loss']}")
-                
-                # DataParallel会返回多个GPU的loss，需要取平均
-                if isinstance(loss, torch.Tensor) and loss.dim() > 0:
-                    loss = loss.mean()
-                
-                # 反向传播
-                optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), training_args.max_grad_norm)
-                optimizer.step()
-                scheduler.step()
-                
-                epoch_loss += loss.item()
-                global_step += 1
-                
-                # 更新进度条显示
-                progress_bar.set_postfix({
-                    'loss': f'{loss.item():.6f}',  # 增加精度到6位小数
-                    'lr': f'{scheduler.get_last_lr()[0]:.2e}'
-                })
-                
-                # 定期日志
-                if global_step % training_args.logging_steps == 0:
-                    logger.info(
-                        f"Step {global_step} | Loss: {loss.item():.4f} | LR: {scheduler.get_last_lr()[0]:.6f}"
-                    )
-            
-            avg_loss = epoch_loss / len(train_dataloader)
-            logger.info(f"\nEpoch {epoch+1} Summary:")
-            logger.info(f"  Average Loss: {avg_loss:.6f}")  # 增加精度
-            logger.info(f"  Total Loss: {epoch_loss:.6f}")
-            
-            # 保存最佳模型
-            if avg_loss < best_loss:
-                best_loss = avg_loss
-                save_path = Path(training_args.output_dir) / 'checkpoints' / 'best_model'
-                save_path.mkdir(parents=True, exist_ok=True)
-                if local_rank in [-1, 0]: # [Modify] 只有 rank0 保存模型
-                    torch.save(model.state_dict(), save_path / 'alignment_model.pt')
-                    logger.info(f"Saved best model with loss {best_loss:.4f}")
-        
-        logger.info("Stage 1 training completed!")
+        # Stage 1: moved to train_utils.stage1_manual.run_stage1_manual_alignment()
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model.to(device)
+        run_stage1_manual_alignment(model=model, model_args=model_args, training_args=training_args, train_dataloader=train_dataloader, logger=logger, device=device, config=config)
         return
+
+    # ==================== End of Stage 1 Loop ====================
     
     # Stage 2-4：使用完整 Trainer
     
@@ -1156,7 +546,7 @@ def main():
     
     # 开始训练
     if training_args.do_train:
-        logger.info("*** Training ***")
+        logger.debug("*** Training ***")
         checkpoint = None
         if training_args.resume_from_checkpoint is not None:
             checkpoint = training_args.resume_from_checkpoint
@@ -1176,12 +566,12 @@ def main():
     
     # 评估
     if training_args.do_eval:
-        logger.info("*** Evaluate ***")
+        logger.debug("*** Evaluate ***")
         metrics = trainer.evaluate()
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
     
-    logger.info("Training completed!")
+    print("Training completed!")
 
 
 if __name__ == "__main__":

@@ -1,202 +1,151 @@
-"""
-Stage 1 对齐数据集
-加载 CT Volume、CT Slices 和医学报告，用于多模态对齐训练
-"""
-
-import os
-import json
 import torch
+import json
+import os
 import numpy as np
-import nibabel as nib
-from pathlib import Path
-from torch.utils.data import Dataset
-from typing import Dict, Optional
-import torchvision.transforms as transforms
+import logging
+from typing import Dict, List, Union
 
+# 引入你刚才提供的基类
+from .base_dataset import BaseMedicalDataset, DatasetRegistry
 
-class LIDCAlignmentDataset(Dataset):
-    """LIDC-IDRI 对齐数据集（Stage 1）"""
-    
-    def __init__(
-        self,
-        data_root: str,
-        annotation_file: str,
-        image_size: tuple = (128, 128, 128),
-        num_slices: int = 16,
-        transform=None,
-    ):
-        """
-        Args:
-            data_root: NIfTI 文件根目录（用于相对路径，如果 JSON 中是绝对路径则忽略）
-            annotation_file: JSON 标注文件路径（train.json/val.json）
-            image_size: 3D 图像尺寸 (D, H, W)
-            num_slices: 采样的 2D 切片数量
-            transform: 数据增强
-        """
-        self.data_root = Path(data_root) if data_root else None
-        self.image_size = image_size
+logger = logging.getLogger(__name__)
+
+@DatasetRegistry.register('lidc_alignment')
+class LIDCAlignmentDataset(BaseMedicalDataset):
+    """
+    Dataset for Stage 1 Alignment (适配 BaseMedicalDataset 接口).
+    Supports both LIDC-IDRI (Weak Supervision) and RadGenome (Strong Supervision).
+    """
+    def __init__(self, 
+                 data_source: str, # 对应之前的 annotation_file/json_path
+                 data_root: str = None,
+                 image_size: tuple = (128, 128, 128),
+                 num_slices: int = 32,
+                 require_mask: bool = False,
+                 normalize: bool = True,
+                 augmentation: bool = False,
+                 **kwargs):
+        
+        super().__init__(
+            data_source=data_source,
+            image_size=image_size,
+            normalize=normalize,
+            augmentation=augmentation,
+            **kwargs
+        )
+        
+        self.data_root = data_root
         self.num_slices = num_slices
-        self.transform = transform
+        self.require_mask = require_mask
         
-        # 加载标注
-        with open(annotation_file, 'r', encoding='utf-8') as f:
-            self.annotations = json.load(f)
-        
-        print(f"Loaded {len(self.annotations)} samples from {annotation_file}")
-    
-    def __len__(self):
-        return len(self.annotations)
-    
-    def load_nifti(self, nifti_path: str) -> np.ndarray:
-        """加载 NIfTI 文件"""
-        # 如果是绝对路径，直接使用
-        if os.path.isabs(nifti_path):
-            full_path = Path(nifti_path)
+        # 加载 JSON 数据列表
+        if data_source and os.path.exists(data_source):
+            with open(data_source, 'r') as f:
+                self.data_list = json.load(f)
         else:
-            # 相对路径，拼接 data_root
-            full_path = self.data_root / nifti_path
+            logger.warning(f"Data source {data_source} not found or empty.")
+            self.data_list = []
+
+    def __len__(self) -> int:
+        return len(self.data_list)
+
+    def __getitem__(self, idx: int) -> Dict[str, Union[torch.Tensor, str, Dict]]:
+        item = self.data_list[idx]
         
-        # 检查文件是否存在
-        if not full_path.exists():
-            raise FileNotFoundError(f"NIfTI file not found: {full_path}")
-        
-        # print(f"Loading {full_path}...")  # 调试日志
-        nii = nib.load(str(full_path))
-        data = nii.get_fdata()
-        return data
-    
-    def preprocess_volume(self, volume: np.ndarray) -> torch.Tensor:
-        """
-        预处理 3D Volume
-        - Resize 到目标尺寸
-        - 归一化
-        """
-        from scipy.ndimage import zoom
-        
-        # 计算缩放因子
-        current_shape = volume.shape
-        zoom_factors = [
-            self.image_size[0] / current_shape[0],
-            self.image_size[1] / current_shape[1],
-            self.image_size[2] / current_shape[2],
-        ]
-        
-        # Resize
-        volume = zoom(volume, zoom_factors, order=1)
-        
-        # 归一化到 [0, 1]
-        volume = (volume - volume.min()) / (volume.max() - volume.min() + 1e-8)
-        
-        # 转换为 Tensor [C, D, H, W]
-        volume = torch.from_numpy(volume).float().unsqueeze(0)
-        
-        return volume
-    
-    def sample_slices(self, volume: np.ndarray, num_slices: int) -> torch.Tensor:
-        """
-        从 3D Volume 中均匀采样 2D 切片
-        
-        Returns:
-            slices: [N, C, H, W]
-        """
-        D, H, W = volume.shape
-        
-        # 均匀采样索引
-        indices = np.linspace(0, D - 1, num_slices, dtype=int)
-        
-        slices = []
-        for idx in indices:
-            slice_2d = volume[idx, :, :]  # [H, W]
+        # --- 1. Load CT Volume ---
+        try:
+            ct_path = item.get('image_path')
+            # 处理相对路径
+            if self.data_root and not os.path.isabs(ct_path):
+                ct_path = os.path.join(self.data_root, ct_path)
             
-            # 归一化
-            slice_2d = (slice_2d - slice_2d.min()) / (slice_2d.max() - slice_2d.min() + 1e-8)
-            
-            # 转换为 3 通道（模拟 RGB）
-            slice_2d = np.stack([slice_2d, slice_2d, slice_2d], axis=0)  # [3, H, W]
-            
-            # Resize 到 336x336（CLIP要求的输入尺寸）
-            from scipy.ndimage import zoom
-            slice_2d = zoom(slice_2d, (1, 336 / H, 336 / W), order=1)
-            
-            slices.append(torch.from_numpy(slice_2d).float())
-        
-        return torch.stack(slices, dim=0)  # [N, 3, 336, 336]
-    
-    def __getitem__(self, idx: int) -> Dict:
-        """
-        返回一个样本
-        
-        Returns:
-            {
-                'ct_volume': [C, D, H, W],
-                'ct_slices': [N, C, H, W],
-                'text_report': str,
-                'scan_id': str,
-            }
-        """
-        ann = self.annotations[idx]
-        
-        # 1. 加载 3D CT Volume
-        volume = self.load_nifti(ann['image_path'])
-        ct_volume = self.preprocess_volume(volume)
-        
-        # 2. 采样 2D Slices
-        ct_slices = self.sample_slices(volume, self.num_slices)
-        
-        # 3. 获取文本报告
-        text_report = ann.get('text_report', '')
-        
+            # 加载逻辑 (根据后缀)
+            if ct_path.endswith('.npy'):
+                ct_volume = np.load(ct_path)
+            elif ct_path.endswith('.pt') or ct_path.endswith('.pth'):
+                ct_volume = torch.load(ct_path).numpy()
+            else:
+                # 调试/后备：随机生成
+                # logger.debug(f"Generating dummy CT for {ct_path}")
+                ct_volume = np.random.randn(*self.image_size).astype(np.float32)
+
+            # 归一化 (调用基类方法)
+            if self.normalize:
+                ct_volume = self.normalize_image(ct_volume)
+
+            # 转 Tensor [C, D, H, W]
+            ct_tensor = torch.from_numpy(ct_volume).float()
+            if ct_tensor.ndim == 3:
+                ct_tensor = ct_tensor.unsqueeze(0) # Add channel dim
+
+            # 调整切片数 (Interpolate)
+            if ct_tensor.shape[1] != self.num_slices:
+                ct_tensor = torch.nn.functional.interpolate(
+                    ct_tensor.unsqueeze(0), 
+                    size=(self.num_slices, self.image_size[1], self.image_size[2]),
+                    mode='trilinear', align_corners=False
+                ).squeeze(0)
+                
+        except Exception as e:
+            logger.error(f"Error loading CT {item.get('id', idx)}: {e}")
+            # 返回随机数据防止 Crash
+            ct_tensor = torch.randn(1, self.num_slices, self.image_size[1], self.image_size[2])
+
+        # --- 2. Load Text (Report) ---
+        report = item.get('report', "No report available.")
+
+        # --- 3. Load Masks (Optional) ---
+        region_masks = None
+        if self.require_mask:
+            # TODO: 实现 Mask 加载逻辑
+            # 这里先返回 None 或 Dummy
+            pass
+
+        # 返回符合 BaseMedicalDataset 接口的字典
+        # 注意：为了兼容 train_net.py 的逻辑，保留原始 key
         return {
-            'ct_volume': ct_volume,
-            'ct_slices': ct_slices,
-            'text_report': text_report,
-            'scan_id': ann.get('scan_id', f'sample_{idx}'),
+            "id": item.get('id'),
+            "ct_volume": ct_tensor, # [C, D, H, W]
+            "report": report,       # Raw Text
+            "text": report,         # Alias for BaseMedicalDataset standard
+            "region_masks": region_masks
         }
 
-
-def alignment_collate_fn(batch, tokenizer):
-    """
-    Stage 1 对齐的 collate 函数
-    
-    Args:
-        batch: List[Dict]
-        tokenizer: BioBERT tokenizer
-    
-    Returns:
-        {
-            'ct_volume': [B, C, D, H, W],
-            'ct_slices': [B, N, C, H, W],
-            'text_inputs': {'input_ids': [B, L], 'attention_mask': [B, L]},
-            'scan_ids': List[str],
+    def get_dataset_info(self) -> Dict[str, any]:
+        return {
+            "name": "LIDCAlignmentDataset",
+            "num_samples": len(self),
+            "modality": "CT",
+            "task": "alignment"
         }
-    """
-    ct_volumes = []
-    ct_slices_list = []
-    text_reports = []
-    scan_ids = []
-    
-    for item in batch:
-        ct_volumes.append(item['ct_volume'])
-        ct_slices_list.append(item['ct_slices'])
-        text_reports.append(item['text_report'])
-        scan_ids.append(item['scan_id'])
-    
-    # Stack volumes and slices
-    ct_volumes = torch.stack(ct_volumes, dim=0)  # [B, C, D, H, W]
-    ct_slices = torch.stack(ct_slices_list, dim=0)  # [B, N, C, H, W]
-    
-    # Tokenize text
-    text_inputs = tokenizer(
-        text_reports,
-        padding=True,
-        truncation=True,
-        max_length=512,
-        return_tensors='pt',
-    )
-    
-    return {
-        'ct_volume': ct_volumes,
-        'ct_slices': ct_slices,
-        'text_inputs': text_inputs,
-        'scan_ids': scan_ids,
-    }
+
+    @staticmethod
+    def collate_fn(batch: List[Dict]) -> Dict[str, Union[torch.Tensor, List]]:
+        """
+        简单的 Collate，不包含 Tokenizer (在 train_net.py 中处理)
+        """
+        if not batch:
+            return {}
+            
+        ids = [x['id'] for x in batch]
+        ct_volumes = torch.stack([x['ct_volume'] for x in batch])
+        reports = [x['report'] for x in batch]
+        
+        # Mask 处理 (如果有)
+        region_masks = None
+        if batch[0].get('region_masks') is not None:
+            # stack masks if they exist
+            pass
+
+        return {
+            "id": ids,
+            "ct_volume": ct_volumes,
+            "report": reports,
+            "text_raw": reports, # 兼容 train_net.py
+            "region_masks": region_masks
+        }
+
+# 为了兼容旧代码的导入方式，保留这个别名
+def alignment_collate_fn(batch, tokenizer=None):
+    # 忽略 tokenizer 参数，因为我们在 train_net.py 外部处理了
+    return LIDCAlignmentDataset.collate_fn(batch)

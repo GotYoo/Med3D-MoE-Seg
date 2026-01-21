@@ -1,226 +1,130 @@
-# Stage 1: 多模态对齐预训练
-# 目标：训练视觉-文本对齐，使CT图像编码和医学报告编码在同一语义空间
+# Stage 1: 多模态对齐预训练 (A100 终极版)
+# 核心策略: 单塔架构(Unified ViT) + 3D知识蒸馏(Distillation) + 强监督区域对齐(Region Alignment)
 
 # ==================== 模型配置 ====================
 model:
-  type: "Med3DLISA_Stage1_Alignment"
+  type: "Med3DLISA_Stage1_Unified_Distill"
   
-  # ===== 双编码器架构 =====
-  
-  # 1. CT-CLIP 3D Vision Encoder - 3D CT图像编码
-  ct_clip_encoder:
+  # 1. 主力视觉塔 (Student) - 负责跑得快、吃得下大 Batch
+  # 使用 ViT-Large，同时提取全局(3D)和局部(Patch)特征
+  unified_vision_encoder:
     enabled: true
-    # 编码器选择：true=轻量级CNN（显存友好），false=BTB3D MAGViT-2（高质量但需更多显存）
-    use_lightweight: true  # 24GB 显存下仍保持轻量版以留足训练空间
-    vision_tower: "checkpoints/ct_clip_pretrained.ckpt"  # BTB3D预训练权重（use_lightweight=false时使用）
-    mm_vision_select_layer: -2
-    mm_vision_select_feature: "patch"
-    freeze_vision_tower: false  # 24GB 显存可解冻，提升对齐能力
-    hidden_size: 512  # 轻量级输出维度（use_lightweight=true时）或18（BTB3D）
-    use_btb3d_impl: false  # 暂时不使用BTB3D（显存不足）
-  
-  # 2. Pixel Encoder (MedPLIB) - 像素级切片定位
-  pixel_encoder:
+    # 使用强大的 ViT-Large 预训练权重
+    vision_tower: "openai/clip-vit-large-patch14-336"
+    freeze_vision_tower: false  # 【A100特权】全量解冻微调
+    
+    return_patches: true        # 必须开启，用于像素/区域对齐
+    projection_dim: 768         # 统一投影维度
+    
+    # 3D 适配: 将切片视为序列处理
+    use_3d_adapter: true
+    num_slices: 32              # 覆盖更多切片以捕捉病灶
+
+  # 2. 辅助 3D 编码器 (Teacher) - 负责传授 3D 结构知识
+  # 利用你现有的 CT-CLIP 预训练权重，冻结不更新
+  external_3d_encoder:
     enabled: true
-    vision_tower: "openai/clip-vit-large-patch14-336"  # MedPLIB使用的CLIP
-    mm_vision_select_layer: -2
-    mm_projector_type: "mlp2x_gelu"
-    freeze_vision_tower: false  # 解冻高层以提升像素-文本对齐
-    use_region_sampler: true  # 使用区域采样器（像素级定位）
-    pixel_hidden_size: 1024
-  
-  # 3. Text Encoder (BioBERT) - 医学文本编码
+    checkpoint: "checkpoints/ct_clip_pretrained.ckpt"
+    model_type: "btb3d"         # 对应你权重的模型结构
+    freeze: true                # 【关键】老师永远是冻结的
+    output_dim: 512             # 原始输出维度，代码会自动投影对齐
+
+  # 3. 文本编码器 (BioBERT)
   text_encoder:
     model_name: "dmis-lab/biobert-v1.1"
-    freeze_biobert: false  # 解冻提升跨模态对齐
+    freeze_biobert: false       # 解冻微调，适应 RadGenome 的描述风格
     hidden_size: 768
-    freeze_layers: 4   # 仅冻结前4层，后层参与训练
-  
-  # ===== Unified Alignment Module（统一对齐模块）=====
+
+  # 4. 对齐模块参数
   alignment:
-    # Feature Fusion（特征融合）
-    ct_clip_dim: 512  # 轻量级encoder输出维度（与ct_clip_encoder.hidden_size一致）
-    pixel_dim: 1024
-    text_dim: 768
-    latent_dim: 512  # 统一潜在空间维度
-    
-    # Contrastive Alignment（对比对齐）
-    contrastive_temperature: 0.05  # 降低温度拉开相似度分布
-    use_cross_attention: true
-    fusion_type: "concat_project"  # concat | add | attention
-    
-    # 多模态输入融合
-    use_clinical_report: true  # 临床报告
-    use_user_instruction: true  # 用户指令
-  
-  # 冻结组件（Stage 1不使用）
-  freeze_components:
-    - "llm"  # LLM完全不加载
-    - "sam"  # SAM完全不加载
-    - "moe"  # MoE完全不加载
+    embed_dim: 768
+    temperature: 0.07           # InfoNCE 温度系数
 
 # ==================== 数据配置 ====================
 data:
-  dataset_name: "LIDC-IDRI"
-  dataset_type: "LIDCAlignmentDataset"  # 专用于对齐的数据集类
+  dataset_name: "RadGenome-ChestCT" # 指定大数据集
+  dataset_type: "LIDCAlignmentDataset" # 或 RadGenome 专用的 Dataset 类
   
-  # 数据路径
-  data_root: "datasets/LIDC-IDRI/processed/LIDC"
-  train_json: "datasets/LIDC-IDRI/splits/train.json"
-  val_json: "datasets/LIDC-IDRI/splits/val.json"
-  test_json: "datasets/LIDC-IDRI/splits/test.json"
+  # 数据路径 (请根据集群实际路径修改)
+  data_root: "datasets/RadGenome/processed"
+  train_json: "datasets/RadGenome/splits/train.json"
+  val_json: "datasets/RadGenome/splits/val.json"
   
-  # 多输入数据（对应流程图）
+  # 【关键】利用 RadGenome 的强监督信号
+  require_mask: true            # 读取解剖结构 Mask
+  require_report: true
+  
   inputs:
-    ct_volume: true            # CT Volume / MRI Sequence
-    clinical_report: true      # Clinical Report/History
-    user_instruction: true     # User Instruction（可选）
+    ct_volume: true
+    clinical_report: true
   
-  # 数据处理（平衡质量与显存：96³+8切片）
-  image_size: [96, 96, 96]  # D, H, W
-  num_slices: 6  # 减少切片以降低显存
+  # 高分辨率输入 (A100 80GB 扛得住)
+  image_size: [128, 128, 128] 
+  num_slices: 32
   normalize: true
   
-  # Stage 1 数据增强（更激进，增强对齐鲁棒性）
+  # 数据增强 (增强鲁棒性)
   augmentation:
     enabled: true
     random_flip: true
     random_rotation: true
     random_scale: [0.8, 1.2]
-    random_intensity: true
     random_noise: true
-    mixup: false  # 对齐阶段不用mixup
-  
-  # 只使用图像和报告（不需要mask）
-  require_mask: false
-  require_report: true
-  
-  # DataLoader（充分利用CPU预加载）
-  num_workers: 4  # 使用4个worker加速数据加载
+
+  # DataLoader 性能优化
+  num_workers: 16               # 拉满 CPU 核心
   pin_memory: true
-  prefetch_factor: 2
+  prefetch_factor: 4
 
 # ==================== 训练配置 ====================
 training:
-  # 基础配置
   stage: 1
-  stage_name: "alignment"
-  output_dir: "outputs/stage1_alignment"
+  stage_name: "alignment_distill"
+  output_dir: "outputs/stage1_unified_a100"
   seed: 42
   
-  # 训练参数（平衡显存使用：batch=4，梯度累积=8，有效batch=32）
+  # 【核心】大 Batch Size 策略
   num_train_epochs: 100
-  per_device_train_batch_size: 2  # 降低单卡占用，避免 OOM
-  per_device_eval_batch_size: 2
-  gradient_accumulation_steps: 12  # 有效 batch ≈24
+  per_device_train_batch_size: 32  # 单卡 32，4卡就是 128，对比学习效果极佳
+  per_device_eval_batch_size: 32
+  gradient_accumulation_steps: 1   # 不需要累积
   
-  # 优化器
+  # 优化器配置
   optimizer: "adamw_torch"
-  learning_rate: 1.0e-4  # CLIP冻结，使用正常学习率
-  weight_decay: 0.01
-  adam_beta1: 0.9
-  adam_beta2: 0.999
-  adam_epsilon: 1.0e-8
+  learning_rate: 5.0e-5            # 解冻微调的标准 LR
+  weight_decay: 0.05
   max_grad_norm: 1.0
   
-  # 学习率调度
-  lr_scheduler_type: "cosine"
-  warmup_ratio: 0.1  # 10% warmup
-  warmup_steps: 0
-  
   # 显存优化
-  gradient_checkpointing: true
-  bf16: true
-  fp16: false
+  gradient_checkpointing: true     # 开启以支持大 Batch
+  bf16: true                       # A100 必开 BF16 加速
   
-  # Stage 1 损失权重（双视觉+文本对齐）
+  # 复合损失函数权重
   loss_weights:
-    # 3D全局特征 vs 文本
-    ct_clip_text_contrastive: 1.2
+    # 1. 全局图文对齐 (基础任务)
+    global_contrastive_loss: 1.0
     
-    # 2D像素级特征 vs 文本
-    pixel_text_contrastive: 1.0
+    # 2. 局部区域对齐 (强监督任务)
+    # 利用 RadGenome Mask，让 Student 学会"左肺"在哪里
+    # 如果数据没有 Mask，代码会自动降级为弱监督 GLoRIA Loss
+    local_contrastive_loss: 1.0    
     
-    # 3D全局 vs 2D像素级（视觉内部对齐）
-    ct_clip_pixel_contrastive: 0.7
-    
-    # 统一对齐损失
-    unified_alignment_loss: 1.2
-    intra_modal_loss: 0.2
+    # 3. 3D 知识蒸馏 (辅助任务)
+    # 强制 Student 的全局特征向 Teacher (3D Encoder) 靠拢
+    distillation_loss: 2.0         
   
   # 评估与保存
   eval_strategy: "steps"
-  eval_steps: 200
+  eval_steps: 500
   save_strategy: "steps"
-  save_steps: 200
+  save_steps: 500
   save_total_limit: 5
-  load_best_model_at_end: true
-  metric_for_best_model: "eval_alignment_acc"
-  greater_is_better: true
-  
-  # 日志
-  logging_strategy: "steps"
   logging_steps: 10
-  logging_dir: "outputs/stage1_alignment/logs"
-  report_to: ["tensorboard"]
-  
-  # 早停
-  early_stopping_patience: 5
-  early_stopping_threshold: 0.001
-
-# ==================== 评估指标 ====================
-evaluation:
-  metrics:
-    - "alignment_accuracy"  # 对齐准确率
-    - "retrieval_recall@1"  # 图像检索文本 R@1
-    - "retrieval_recall@5"  # 图像检索文本 R@5
-    - "text_retrieval_recall@1"  # 文本检索图像 R@1
-    - "contrastive_loss"
+  report_to: ["tensorboard", "wandb"] # 建议开启 wandb 监控 Loss 曲线
 
 # ==================== DeepSpeed 配置 ====================
 deepspeed:
   enabled: true
-  config_file: "config/deepspeed_stage1.json"
-  
-  # ZeRO 优化 (Stage 1 可以用 ZeRO-1，因为模型较小)
-  zero_optimization:
-    stage: 1
-    overlap_comm: true
-    contiguous_gradients: true
-  
-  # 混合精度
-  fp16:
-    enabled: false
-  bf16:
-    enabled: true
-  
-  train_batch_size: "auto"
-  train_micro_batch_size_per_gpu: "auto"
-  gradient_accumulation_steps: "auto"
-
-# ==================== 混合精度配置 ====================
-mixed_precision:
-  enabled: true
-  precision: "bf16"
-
-# ==================== Checkpoint 配置 ====================
-checkpoint:
-  save_dir: "outputs/stage1_alignment/checkpoints"
-  resume_from_checkpoint: null  # Stage 1 从头开始
-  
-  # 保存策略（三个编码器）
-  save_ct_clip_encoder: true
-  save_pixel_encoder: true
-  save_text_encoder: true
-  save_alignment_module: true
-
-# ==================== 下一阶段配置 ====================
-next_stage:
-  stage: 2
-  config: "config/stage2_segmentation.yaml"
-  pretrained_checkpoint: "outputs/stage1_alignment/checkpoints/best_model"
-  load_components:
-    - "ct_clip_encoder"
-    - "pixel_encoder"
-    - "text_encoder"
-    - "alignment_module"
+  # 纯 GPU 模式 (ZeRO-2 No Offload)
+  # A100 显存够大，不需要 CPU Offload，速度最快
+  config_file: "config/ds_config_zero2_no_offload.json"

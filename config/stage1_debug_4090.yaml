@@ -1,0 +1,85 @@
+model:
+  type: "Med3DLISA_Stage1_Unified_Distill"
+  
+  # 【调试】Student: 使用 ViT-Large (但冻结它)
+  unified_vision_encoder:
+    enabled: true
+    vision_tower: "openai/clip-vit-large-patch14-336"
+    freeze_vision_tower: true   # 【关键】调试时冻结，省显存
+    return_patches: true
+    projection_dim: 768
+    
+    use_3d_adapter: true
+    num_slices: 8               # 【降低】减少切片数
+
+  # 【调试】Teacher: 3D 编码器
+  external_3d_encoder:
+    enabled: true
+    checkpoint: "checkpoints/teacher_vit_fixed.pt"
+    model_type: "btb3d"
+    freeze: true                # 老师永远是冻结的
+    output_dim: 512
+
+  text_encoder:
+    model_name: "dmis-lab/biobert-v1.1"
+    freeze_biobert: true        # 【关键】调试时冻结
+    hidden_size: 768
+
+data:
+  # 【调试】先用 LIDC 跑通流程，或者 RadGenome 的一个小 Split
+  dataset_name: "LIDC-IDRI" 
+  dataset_type: "LIDCAlignmentDataset"
+  
+  data_root: "datasets/LIDC-IDRI/processed/LIDC"
+  train_json: "datasets/LIDC-IDRI/splits/train.json" 
+  val_json: "datasets/LIDC-IDRI/splits/val.json"
+  
+  require_mask: false # 调试时先跑通弱监督分支
+  require_report: true
+  
+  inputs:
+    ct_volume: true
+    clinical_report: true
+  
+  # 【大幅降级】适配 24GB 显存
+  image_size: [96, 96, 96]    # 降低分辨率
+  num_slices: 8               # 降低切片数
+  normalize: true
+  
+  augmentation:
+    enabled: false            # 调试时关掉增强，排除干扰
+
+  num_workers: 0              # 【关键】调试时设为 0，主进程加载，报错能直接看到堆栈信息！
+  pin_memory: false
+
+training:
+  stage: 1
+  stage_name: "debug"
+  output_dir: "outputs/debug_4090"
+  seed: 42
+  
+  num_train_epochs: 3
+  per_device_train_batch_size: 2  # 【降低】能跑起来就行
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 1
+  
+  optimizer: "adamw_torch"
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  
+  gradient_checkpointing: false   # 冻结了骨干，通常不需要这个
+  bf16: true                      # 4090 支持 BF16
+  
+  loss_weights:
+    global_contrastive_loss: 1.0
+    local_contrastive_loss: 0.5
+    distillation_loss: 1.0
+  
+  eval_strategy: "no"             # 调试时不评估
+  save_strategy: "no"             # 调试时不保存
+  logging_steps: 1
+  report_to: ["none"]             # 不上传 wandb
+
+deepspeed:
+  enabled: false                  # 【关键】调试时完全关闭 DeepSpeed，用原生 PyTorch 跑，报错信息最准确

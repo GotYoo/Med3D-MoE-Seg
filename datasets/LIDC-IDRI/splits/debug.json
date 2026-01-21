@@ -1,0 +1,350 @@
+[
+  {
+    "scan_id": "LIDC-IDRI-0381",
+    "patient_id": "LIDC-IDRI-0381",
+    "image_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0381_image.nii.gz",
+    "mask_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0381_mask.nii.gz",
+    "text_report": "CT scan with 1 annotated nodule cluster(s). Primary finding: a likely benign nodule with solid appearance and spiculated margin. Overall impression: likely benign. (Primary nodule mask volume: 74 voxels.)",
+    "cluster_stats": [
+      {
+        "cluster_id": 0,
+        "voxels": 74,
+        "bbox": {
+          "x": [
+            332,
+            344
+          ],
+          "y": [
+            417,
+            429
+          ],
+          "z": [
+            76,
+            81
+          ]
+        },
+        "malignancy_avg": 2.5,
+        "spiculation_avg": 1.0,
+        "texture_avg": 5.0,
+        "sphericity_avg": 4.0
+      }
+    ]
+  },
+  {
+    "scan_id": "LIDC-IDRI-0242",
+    "patient_id": "LIDC-IDRI-0242",
+    "image_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0242_image.nii.gz",
+    "mask_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0242_mask.nii.gz",
+    "text_report": "CT scan with 1 annotated nodule cluster(s). Primary finding: a highly suspicious malignant nodule with solid appearance and smooth margin. Overall impression: suspicious. (Primary nodule mask volume: 3394 voxels.)",
+    "cluster_stats": [
+      {
+        "cluster_id": 0,
+        "voxels": 3394,
+        "bbox": {
+          "x": [
+            301,
+            342
+          ],
+          "y": [
+            370,
+            408
+          ],
+          "z": [
+            106,
+            117
+          ]
+        },
+        "malignancy_avg": 4.75,
+        "spiculation_avg": 4.75,
+        "texture_avg": 4.75,
+        "sphericity_avg": 4.25
+      }
+    ]
+  },
+  {
+    "scan_id": "LIDC-IDRI-0755",
+    "patient_id": "LIDC-IDRI-0755",
+    "image_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0755_image.nii.gz",
+    "mask_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0755_mask.nii.gz",
+    "text_report": "No nodules detected in this scan.",
+    "cluster_stats": []
+  },
+  {
+    "scan_id": "LIDC-IDRI-0936",
+    "patient_id": "LIDC-IDRI-0936",
+    "image_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0936_image.nii.gz",
+    "mask_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0936_mask.nii.gz",
+    "text_report": "CT scan with 2 annotated nodule cluster(s). Primary finding: a highly suspicious malignant nodule with ground-glass opacity appearance and spiculated margin. Overall impression: suspicious. (Primary nodule mask volume: 2421 voxels.)",
+    "cluster_stats": [
+      {
+        "cluster_id": 0,
+        "voxels": 1414,
+        "bbox": {
+          "x": [
+            181,
+            210
+          ],
+          "y": [
+            351,
+            386
+          ],
+          "z": [
+            129,
+            138
+          ]
+        },
+        "malignancy_avg": 4.0,
+        "spiculation_avg": 2.25,
+        "texture_avg": 2.25,
+        "sphericity_avg": 3.0
+      },
+      {
+        "cluster_id": 1,
+        "voxels": 2421,
+        "bbox": {
+          "x": [
+            274,
+            307
+          ],
+          "y": [
+            117,
+            153
+          ],
+          "z": [
+            145,
+            159
+          ]
+        },
+        "malignancy_avg": 4.25,
+        "spiculation_avg": 1.5,
+        "texture_avg": 1.5,
+        "sphericity_avg": 3.0
+      }
+    ]
+  },
+  {
+    "scan_id": "LIDC-IDRI-0615",
+    "patient_id": "LIDC-IDRI-0615",
+    "image_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0615_image.nii.gz",
+    "mask_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0615_mask.nii.gz",
+    "text_report": "CT scan with 3 annotated nodule cluster(s). Primary finding: a likely benign nodule with solid appearance and spiculated margin. Overall impression: likely benign. (Primary nodule mask volume: 150 voxels.)",
+    "cluster_stats": [
+      {
+        "cluster_id": 0,
+        "voxels": 150,
+        "bbox": {
+          "x": [
+            221,
+            234
+          ],
+          "y": [
+            79,
+            90
+          ],
+          "z": [
+            104,
+            112
+          ]
+        },
+        "malignancy_avg": 2.25,
+        "spiculation_avg": 1.0,
+        "texture_avg": 5.0,
+        "sphericity_avg": 3.25
+      },
+      {
+        "cluster_id": 1,
+        "voxels": 114,
+        "bbox": {
+          "x": [
+            279,
+            290
+          ],
+          "y": [
+            380,
+            394
+          ],
+          "z": [
+            132,
+            139
+          ]
+        },
+        "malignancy_avg": 1.0,
+        "spiculation_avg": 1.0,
+        "texture_avg": 5.0,
+        "sphericity_avg": 4.25
+      },
+      {
+        "cluster_id": 2,
+        "voxels": 82,
+        "bbox": {
+          "x": [
+            274,
+            285
+          ],
+          "y": [
+            146,
+            157
+          ],
+          "z": [
+            138,
+            143
+          ]
+        },
+        "malignancy_avg": 2.0,
+        "spiculation_avg": 1.0,
+        "texture_avg": 5.0,
+        "sphericity_avg": 3.0
+      }
+    ]
+  },
+  {
+    "scan_id": "LIDC-IDRI-0180",
+    "patient_id": "LIDC-IDRI-0180",
+    "image_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0180_image.nii.gz",
+    "mask_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0180_mask.nii.gz",
+    "text_report": "CT scan with 1 annotated nodule cluster(s). Primary finding: an indeterminate nodule with solid appearance and spiculated margin. Overall impression: indeterminate. (Primary nodule mask volume: 59 voxels.)",
+    "cluster_stats": [
+      {
+        "cluster_id": 0,
+        "voxels": 59,
+        "bbox": {
+          "x": [
+            245,
+            255
+          ],
+          "y": [
+            169,
+            180
+          ],
+          "z": [
+            184,
+            190
+          ]
+        },
+        "malignancy_avg": 3.0,
+        "spiculation_avg": 1.0,
+        "texture_avg": 5.0,
+        "sphericity_avg": 4.0
+      }
+    ]
+  },
+  {
+    "scan_id": "LIDC-IDRI-0459",
+    "patient_id": "LIDC-IDRI-0459",
+    "image_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/images/LIDC-IDRI-0459_image.nii.gz",
+    "mask_path": "/home/wuhanqing/Med3D-MoE-Seg/datasets/LIDC-IDRI/processed/LIDC/masks/LIDC-IDRI-0459_mask.nii.gz",
+    "text_report": "CT scan with 5 annotated nodule cluster(s). Primary finding: an indeterminate nodule with solid appearance and spiculated margin. Overall impression: indeterminate. (Primary nodule mask volume: 91 voxels.)",
+    "cluster_stats": [
+      {
+        "cluster_id": 0,
+        "voxels": 55,
+        "bbox": {
+          "x": [
+            197,
+            207
+          ],
+          "y": [
+            368,
+            378
+          ],
+          "z": [
+            42,
+            48
+          ]
+        },
+        "malignancy_avg": 1.0,
+        "spiculation_avg": 4.0,
+        "texture_avg": 5.0,
+        "sphericity_avg": 3.0
+      },
+      {
+        "cluster_id": 1,
+        "voxels": 34,
+        "bbox": {
+          "x": [
+            168,
+            177
+          ],
+          "y": [
+            403,
+            412
+          ],
+          "z": [
+            63,
+            68
+          ]
+        },
+        "malignancy_avg": 1.0,
+        "spiculation_avg": 1.0,
+        "texture_avg": 5.0,
+        "sphericity_avg": 3.0
+      },
+      {
+        "cluster_id": 2,
+        "voxels": 60,
+        "bbox": {
+          "x": [
+            323,
+            332
+          ],
+          "y": [
+            125,
+            135
+          ],
+          "z": [
+            83,
+            89
+          ]
+        },
+        "malignancy_avg": 1.0,
+        "spiculation_avg": 4.0,
+        "texture_avg": 5.0,
+        "sphericity_avg": 4.0
+      },
+      {
+        "cluster_id": 3,
+        "voxels": 32,
+        "bbox": {
+          "x": [
+            330,
+            339
+          ],
+          "y": [
+            125,
+            134
+          ],
+          "z": [
+            128,
+            133
+          ]
+        },
+        "malignancy_avg": 1.0,
+        "spiculation_avg": 2.0,
+        "texture_avg": 5.0,
+        "sphericity_avg": 3.0
+      },
+      {
+        "cluster_id": 4,
+        "voxels": 91,
+        "bbox": {
+          "x": [
+            260,
+            271
+          ],
+          "y": [
+            184,
+            195
+          ],
+          "z": [
+            189,
+            195
+          ]
+        },
+        "malignancy_avg": 3.0,
+        "spiculation_avg": 1.0,
+        "texture_avg": 5.0,
+        "sphericity_avg": 4.0
+      }
+    ]
+  }
+]

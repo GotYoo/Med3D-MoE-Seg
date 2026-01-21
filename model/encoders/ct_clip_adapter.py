@@ -22,10 +22,19 @@ except ImportError:
         sys.path.insert(0, BTB3D_PATH)
     
     try:
+        # 打印一下当前的 sys.path，确认路径是否真的加进去了
+        # print(f"Current sys.path: {sys.path}") 
+        
         from llava.model.multimodal_encoder.ct_clip import CLIPVisionTower as BTB3D_CTCLIPVisionTower
         HAS_BTB3D = True
-    except ImportError:
-        print("Warning: BTB3D CT-CLIP not found, using fallback")
+        print("✅ Successfully imported BTB3D!")
+    except Exception as e:
+        # 【关键】打印完整的错误堆栈，看看到底缺了什么
+        import traceback
+        print(f"❌ Error importing BTB3D: {e}")
+        traceback.print_exc() # 这行会打印出具体是哪一行代码报错
+        
+        print("Warning: BTB3D CT-CLIP import failed, using fallback")
         BTB3D_CTCLIPVisionTower = None
         HAS_BTB3D = False
 

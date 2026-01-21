@@ -1,88 +1,68 @@
 #!/bin/bash
-# Med3D-MoE-Seg 分阶段训练脚本
+# Med3D-MoE-Seg 4090 调试专用脚本
 
 set -e  # 遇到错误立即退出
 
 # ==================== 环境变量配置 ====================
-# 激活cv环境
+# 激活环境 (请确保路径正确)
 source ~/anaconda3/bin/activate cv
 
-# 只使用GPU 0（单卡训练，避免DataParallel导致batch_size被分割）
-# 如果需要多卡，可以修改此处，但注意标准 DDP 不会节省显存，需要 DeepSpeed
-export CUDA_VISIBLE_DEVICES=${3:-"0"}
+# 指定单卡
+export CUDA_VISIBLE_DEVICES=1
 
-# RTX 4000 系列显卡 NCCL 配置
+# RTX 4090 专用 NCCL/CUDA 配置
 export NCCL_P2P_DISABLE=1
 export NCCL_IB_DISABLE=1
-export NCCL_DEBUG=WARN  # 只显示警告和错误，不显示详细INFO
+export NCCL_DEBUG=WARN 
 
-# 内存优化配置（PyTorch 2.x推荐的环境变量）
-export PYTORCH_ALLOC_CONF=expandable_segments:True,max_split_size_mb:64
+# 显存碎片整理 (PyTorch 2.x)
+export PYTORCH_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128
 
 # ==================== 配置 ====================
 PROJECT_ROOT="/home/wuhanqing/Med3D-MoE-Seg"
-DATA_ROOT="datasets/LIDC-IDRI/processed/LIDC"
 cd "$PROJECT_ROOT"
 
-# 解析命令行参数
-STAGE=${1:-"all"}  # 默认执行所有阶段
-SKIP_STAGES=${2:-""}  # 跳过的阶段（逗号分隔）
-
 # ==================== 辅助函数 ====================
-log_info() {
-    echo -e "\033[1;34m[INFO]\033[0m $1"
-}
+log_info() { echo -e "\033[1;34m[INFO]\033[0m $1"; }
+log_success() { echo -e "\033[1;32m[SUCCESS]\033[0m $1"; }
+log_error() { echo -e "\033[1;31m[ERROR]\033[0m $1"; }
 
-log_success() {
-    echo -e "\033[1;32m[SUCCESS]\033[0m $1"
-}
-
-log_error() {
-    echo -e "\033[1;31m[ERROR]\033[0m $1"
-}
-
-should_skip_stage() {
-    local stage=$1
-    if [[ ",$SKIP_STAGES," == *",$stage,"* ]]; then
-        return 0
-    fi
-    return 1
-}
-
-# ==================== Stage 1: 多模态对齐 ====================
-train_stage1() {
+# ==================== Stage 1: 调试运行 ====================
+train_stage1_debug() {
     log_info "=========================================="
-    log_info "Stage 1: Multi-Modal Alignment Training"
+    log_info "Stage 1: Debugging on RTX 4090"
+    log_info "Config: config/stage1_debug_4090.yaml"
     log_info "=========================================="
     
-    if should_skip_stage "1"; then
-        log_info "Skipping Stage 1 (as requested)"
-        return 0
-    fi
-    
-    log_info "Training vision-text alignment..."
-    log_info "Components: CT-CLIP + MedPLIB + BioBERT (No LLM needed)"
-    log_info "Duration: ~100 epochs"
+    # 确保 log 目录存在
+    mkdir -p logs/debug
+
+    # 【关键修改】
+    # 1. 使用 debug 配置文件
+    # 2. 如果你有 debug.json，请替换下面的 train_json 路径
+    # 3. 移除了后台管道，直接在终端输出，方便看报错或 pdb 交互
     
     python train_net.py \
         --do_train \
-        --config_file config/stage1_alignment.yaml \
+        --config_file config/stage1_debug_4090.yaml \
         --data_root datasets/LIDC-IDRI/processed/LIDC \
-        --train_json datasets/LIDC-IDRI/splits/train.json \
+        --train_json datasets/LIDC-IDRI/splits/debug.json \
         --val_json datasets/LIDC-IDRI/splits/val.json \
-        --output_dir outputs/stage1_alignment \
-        2>&1 | tee logs/stage1_alignment.log
+        --output_dir outputs/debug_4090 \
+        --report_to none  # 调试时不上传 wandb
     
-    TRAIN_EXIT_CODE=${PIPESTATUS[0]}
+    TRAIN_EXIT_CODE=$?
+    
     if [ $TRAIN_EXIT_CODE -eq 0 ]; then
-        log_success "Stage 1 completed successfully!"
-        log_info "Best checkpoint: outputs/stage1_alignment/checkpoints/best_model"
+        log_success "Debug run finished successfully!"
     else
-        log_error "Stage 1 failed with exit code: $TRAIN_EXIT_CODE"
-        log_error "Check logs/stage1_alignment.log for details"
+        log_error "Debug run failed with exit code: $TRAIN_EXIT_CODE"
         exit 1
     fi
 }
+
+# 执行
+train_stage1_debug
 
 # ==================== Stage 2: 分割器微调 ====================
 train_stage2() {
